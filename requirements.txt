@@ -1,3 +1,4 @@
+psycopg
 python-dotenv
 blinker==1.9.0
 click==8.3.0
