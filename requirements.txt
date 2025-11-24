@@ -1,3 +1,4 @@
+bootstrap-flask
 psycopg
 python-dotenv
 blinker==1.9.0
