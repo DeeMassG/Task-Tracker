@@ -1,0 +1,29 @@
+body { /* настраиваем фон и цвет текста общий*/
+    background-color: #ffffff;
+    color: #000000;
+}
+
+/* настраиваем цвет панели */
+.navbar {
+    background-color: #5555bf;
+
+}
+
+/* настраиваем размер, смещение текста и цвет */
+.nav-center .nav-link {
+    font-size: 1.2rem;
+    padding: 10px 16px;
+}
+
+/* Эффект подсвечивания, поднятия */
+.nav-center .nav-link:hover {
+    color: rgba(186, 168, 15, 0.93);
+    transform: scale(1.05);
+
+}
+/* настраиваем цвет текста панели */
+.navbar .nav-link {
+    color: #191970;
+
+}
+

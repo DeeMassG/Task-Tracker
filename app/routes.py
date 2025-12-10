@@ -8,10 +8,6 @@ import psycopg
 def index():
     return render_template('index.html')
 
-@app.route('/', methods=['GET', 'POST'])
-def test_connection():
-    return ''
-
 
 
 def get_db_connection(): # вынесем подключение к бд в отдельную функцию
@@ -25,43 +21,32 @@ def get_db_connection(): # вынесем подключение к бд в от
 @app.route('/projects', methods=['GET'])
 def projects_list(): # просмотреть список проектов пользователя (список названий с возможностью перейти к каждому проекту (описание))
     with get_db_connection() as con:
-        client_id = 3 # зададим произвольный айди
+        client_id = 1 # зададим произвольный айди. Получим наверное из сессии (но точно не из предыдущего роута)
         cur = con.cursor() # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
-        user_projects = cur.execute('SELECT p.name FROM users as u JOIN '
+        user_projects = cur.execute('SELECT p.name, p.project_id FROM users as u JOIN '
                                     'project as p ON u.user_id = p.owner_project_id WHERE user_id = %s', (client_id, )).fetchall()
-        #result = "<h1>Список моих проектов:</h1>"
-        result = ''
-        counter = 1
-        for name in user_projects:
-            result += f"<p> {counter} : {name[0]} </p>"
-            counter += 1
 
-        return result
+        return render_template('projects.html', user_projects=user_projects)
 
-@app.route('/projects/allmytasks', methods=['GET'])
+@app.route('/allmytasks', methods=['GET'])
 def assigned_tasks(): # просмотреть список назначенных пользователю задач среди всех проектов (по ним можно перейти к самим задачам)
     with get_db_connection() as con:
 
-        client_id = 3
+        client_id = 3 # получаем айди клиента из сессии и передаём его в запрос
         cur = con.cursor()
-        assigned_tasks = cur.execute('SELECT t.name FROM users as u JOIN '
+        assigned_tasks = cur.execute('SELECT t.name, u.login FROM users as u JOIN '
                                     'task as t ON u.user_id = t.executor_id'
                                      ' WHERE user_id = %s', (client_id, )).fetchall()
         #result = "<h1>Список моих проектов:</h1>"
-        result = ''
-        counter = 1
-        for task in assigned_tasks:
-            result += f"<p> {counter} : {task[0]} </p>"
-            counter += 1
 
-        return result
+        return render_template ('all_my_tasks', assigned_tasks = assigned_tasks) # передаём в шаблон логин
 
 #---------------------------------------------------------
 @app.route('/tasks/<int:task_id>/history', methods=['GET'])
 def history_task(task_id): # просмотреть историю задачи (название проекта откуда она, название задачи
                     # логин автора изменения, тип изменения и дата
     with get_db_connection() as con:
-        task_id = 2
+        task_id = 2 # получаем айди задачи, информацию о которой хотим посмотреть
         cur = con.cursor()  # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
 
         # сначала получаем инфо о задаче
@@ -70,66 +55,50 @@ def history_task(task_id): # просмотреть историю задачи 
                                     (task_id,)).fetchone()
 
         # теперь получаем инфо об изменениях этой задачи
-        history = cur.execute('SELECT change_author, type, data_change FROM change WHERE task_id = %s', (task_id, )).fetchone()
-        result = ''
-
+        history = cur.execute('SELECT c.change_author, type, c.data_change FROM change as c WHERE task_id = %s', (task_id, )).fetchone()
         # выводим историю конкретной задачи с указанием названия проекта и задачи
 
-        result += f"<p> {task[0]} : {task[1]} : {history[0]} : {history[1]} : {history[2]} </p>"
+        return render_template('task_history.html', task=task, history=history)
 
-        return result
-
-@app.route('/tasks/int:<task_id>', methods = (['GET']))
-def check_task(task_id):
+@app.route('/tasks/<int:task_id>', methods = (['GET']))
+def check_task(task_id): # Посмотреть информацию о конкретной задаче в проекте
     with get_db_connection() as con:
         cur = con.cursor() # курсор для выполнения запросов к бд
-        task_id = 2
-        task = cur.execute('SELECT p.name, t.name, t.creator_id, t.executor_id, t.deadline, t.priority, t.status, t.description FROM task as t '
+
+        task = cur.execute('SELECT t.name, t.deadline, t.priority, t.status, t.description, p.name FROM task as t '
                            'JOIN project as p ON t.project_id = t.project_id JOIN users as u '
                            'ON t.creator_id = u.user_id  WHERE task_id = %s', (task_id,)).fetchone()
-    if not task:
-        return "Задача не найдена", 404
 
-    return render_template('base.html', task=task)
+        login_owner = cur.execute('SELECT u.login FROM users as u JOIN task ON u.user_id = creator_id WHERE task_id = %s', (task_id,)).fetchone()
+        login_exec = cur.execute('SELECT u.login FROM users as u JOIN task ON u.user_id = executor_id WHERE task_id = %s', (task_id,)).fetchone()
+
+        return render_template('check_task.html', task=task, owner=login_owner, executor=login_exec)
+
 
 @app.route('/projects/<int:project_id>', methods=['GET'])
 def check_user_project(project_id): # посмотреть проект (вывести инфо о нём без задач)
     with get_db_connection() as con:
-        project_id = 2
         cur = con.cursor()  # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
-        user_project = cur.execute('SELECT login, p.name, date_of_creation, description FROM users as u JOIN '
+        description_project = cur.execute('SELECT login, p.name, date_of_creation, description, p.project_id FROM users as u JOIN '
                                     'project as p ON u.user_id = p.owner_project_id WHERE project_id = %s',
-                                    (project_id,)).fetchall()
+                                    (project_id,)).fetchone()
 
-        result = ''
-        counter = 1
-        for project in user_project:
-            result += (f"<p> {counter} Создатель:  {project[0]}  Название:  {project[1]} "
-                       f": Дата создания:  {project[2]}  Описание :  {project[3]}  </p>")
-
-            counter += 1
-
-        return result
+        return render_template('check_user_project.html', description_project=description_project)
 
 @app.route('/projects/<int:project_id>/tasks', methods=['GET'])
 def tasks_list_project(project_id): # посмотреть список всех задач в конкретном проекте (выводим названия
                           # по которым можно перейти к конкретным задачам
     with get_db_connection() as con:
 
-        project_id = 2
         cur = con.cursor() # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
-        user_projects = cur.execute('SELECT name FROM task WHERE project_id = %s', (project_id,)).fetchall()
+        user_tasks = cur.execute('SELECT name, task_id FROM task WHERE project_id = %s', (project_id,)).fetchall()
 
-        result = ''
-        counter = 1
-        for name in user_projects:
-            result += f"<p> {counter} : {name[0]} </p>"
-            counter += 1
+        project_name = cur.execute('SELECT name FROM project WHERE project_id = %s', (project_id, )).fetchone()
 
-        return result
+        return render_template('tasks_list_project.html', user_tasks=user_tasks, project_name=project_name)
 
-@app.route('/projects/project/assigned_tasks', methods=['GET'])
-def assigned_tasks_project(): # посмотреть список назначенных пользователю задач в проекте
+@app.route('/projects/<int:project_id>/assigned_tasks', methods=['GET'])
+def assigned_tasks_project(project_id): # посмотреть список назначенных пользователю задач в проекте
                               # выводим только названия, по которым можно перейти к самим задачам
 
     with get_db_connection() as con:
@@ -141,14 +110,7 @@ def assigned_tasks_project(): # посмотреть список назначе
         user_tasks = cur.execute('SELECT t.name FROM users as u JOIN '
                                     'task as t ON u.user_id = t.executor_id'
                                      ' WHERE user_id = %s AND project_id = %s', (user_id, project_id )).fetchall()
-        #result = "<h1>Список моих проектов:</h1>"
-        result = ''
-        counter = 1
-        for name in user_tasks:
-            result += f"<p> {counter} : {name[0]} </p>"
-            counter += 1
-
-        return result
+        return render_template('assigned_tasks_project.html', user_tasks=user_tasks)
 
 @app.route('/profile', methods=['GET'])
 def check_profile():  # посмотреть профиль юзера - выводим всю информацию о пользователе
@@ -157,27 +119,26 @@ def check_profile():  # посмотреть профиль юзера - выв�
         user_id = 3
         cur = con.cursor()  # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
 
-        profile_data = cur.execute('SELECT surname, name, last_name, login, password, birthday, email_adress FROM users '
+        profile_data = cur.execute('SELECT surname, name, last_name, login, birthday, email_adress FROM users '
                                        'WHERE user_id = %s', (user_id, )).fetchone()
 
-        result = ''
+        return render_template('profile.html', profile_data=profile_data)
 
-        result += f"<p>Фамилия: {profile_data[0]}</p>"
-        result += f"<p>Имя: {profile_data[1]}</p>"
-        result += f"<p>Отчество: {profile_data[2]}</p>"
-        result += f"<p>Логин: {profile_data[3]}</p>"
-        result += f"<p>Пароль: {profile_data[4]}</p>"
-        result += f"<p>Дата рождения: {profile_data[5]}</p>"
-        result += f"<p>Адрес электронной почты: {profile_data[6]}</p>"
 
-    return result
+@app.route('/login', methods=['GET'])
+def login(): # залогиниться (ввести логин пароль)
+    with get_db_connection() as con:
+
+        cur = con.cursor() #Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
+        login_connect = cur.execute( ( )).fetchall()
+
 
 @app.route('/register', methods=['GET'])
 def register(): # зарегистрироваться (создать логин пароль)
     with get_db_connection() as con:
 
         cur = con.cursor() #Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
-        user_projects = cur.execute( ( )).fetchall()
+        user_reg = cur.execute( ( )).fetchall()
 
 
 @app.route('/profile/edit', methods=['GET', 'POST'])
@@ -215,10 +176,10 @@ def edit_profile(): # изменить профиль (изменить логи
             result += f"<p>Дата рождения: {profile_data[5]}</p>"
             result += f"<p>Адрес электронной почты: {profile_data[6]}</p>"
 
-        return result
+        return render_template('')
 
-@app.route('/projects/create_project', methods=['GET', 'POST'])
-def create_project(): # создать проект (ввести название проекта include)
+@app.route('/projects/newproject', methods=['GET', 'POST'])
+def create_project(): # создать проект (ввести название обязательно, дата создания, описание, )
     with get_db_connection() as con:
 
         cur = con.cursor() #Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
@@ -234,25 +195,32 @@ def create_project(): # создать проект (ввести названи
 
 
 
-@app.route('/projects/project/create_task', methods=['GET', 'POST'])
-def create_task(): # создать задачу (ввести название и назначить исполнителя include)
+@app.route('/projects/<int:project_id>/create_task', methods=['GET', 'POST'])
+def create_task(project_id): # создать задачу (ввести название и назначить исполнителя include)
     with get_db_connection() as con:
 
         cur = con.cursor() #Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
-        user_projects = cur.execute( ( )).fetchall()
+
+
+        return render_template('create_task.html', project_id=project_id)
 
 
 
-@app.route('/projects/newproject', methods=['GET', 'POST'])
-def edit_task(): # создать проект (ввести название)
-    with get_db_connection() as con:
 
-        cur = con.cursor() #Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
-        user_projects = cur.execute( ( )).fetchall()
-
-
-@app.route('/projects/project/edit', methods=['GET', 'POST'])
+@app.route('/projects/<int:project_id>/edit', methods=['GET', 'POST'])
 def edit_project(): # редактировать проект (удалить переименовать назначить дедлайн добавить другого пользователя в проект)
+    with get_db_connection() as con:
+
+        if request.method == 'POST':
+            name = 0
+
+        else:
+            cur = con.cursor()
+            projects = cur.execute( ( )).fetchall()
+
+@app.route('/tasks/<int:task>/edit', methods=['GET', 'POST'])
+def edit_task(): # редактировать задачу (удалить, переименовать, переназначить исполнителя,
+    # изменить приоритет, переназначить дедлайн, изменить статус, изменить описание задачи - что нужно сделать)
     with get_db_connection() as con:
 
         if request.method == 'POST':

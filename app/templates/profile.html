@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <div class="text-center mt-5">
+        <h2 class="mb-4">Профиль пользователя</h2>
+
+        <div class="card mx-auto" style="width: 40rem;">
+            <ul class="list-group list-group-flush text-start">
+                <li class="list-group-item">Фамилия : {{profile_data[0]}}</li>
+                <li class="list-group-item">Имя : {{profile_data[1]}}</li>
+                <li class="list-group-item">Отчество : {{profile_data[2]}}</li>
+                <li class="list-group-item">Логин : {{profile_data[3]}}</li>
+                <li class="list-group-item">Дата рождения : {{profile_data[4]}}</li>
+                <li class="list-group-item">Адрес электронной почты : {{profile_data[5]}}</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}

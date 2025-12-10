@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block content %}
+<title>Мои задачи</title>
+<div class="container">
+
+    <div class="text-center mt-5">
+        <h1 class="mb-4"> Список назначенных мне задач из всех проектов </h1>
+        <p> Подсказка: нажмите на название задачи, чтобы перейти к её содержимому </p>
+             {% for task in assigned_tasks %}
+                <a href="{{ url_for('assigned_tasks', login = task[1]) }}" class="btn btn-primary btn-lg me-2"> {{ task[0] }}  </a>
+             {% endfor %}
+    </div>
+
+</div>
+{% endblock %}

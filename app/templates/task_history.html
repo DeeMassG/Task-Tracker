@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h3 class="mb-4">Изменения задачи "{{task[1]}}"</h3>
+
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-body">
+                    <dl class="row">
+
+                        <dt class="col-sm-4">Тип:</dt>
+                        <dd class="col-sm-8">{{ history[1] }}</dd>
+
+                        <dt class="col-sm-4">Дата:</dt>
+                        <dd class="col-sm-8">{{ history[2] }}</dd>
+
+                        <dt class="col-sm-4">Логин автора:</dt>
+                        <dd class="col-sm-8">{{ history[0] }}</dd>
+
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-8">
+            <div class="d-grid gap-2">
+
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

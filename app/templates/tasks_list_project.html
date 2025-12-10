@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block content %}
+<title>Задачи</title>
+<div class="container">
+
+    <div class="text-center mt-5">
+        <h1 class="mb-4"> Задачи в проекте "{{project_name[0]}}" </h1>
+             <p> Подсказка: нажмите на название задачи, чтобы перейти к её описанию </p>
+             {% for user_task in user_tasks %}
+                <a href="{{ url_for('check_task', task_id = user_task[1]) }}" class="btn btn-info btn-lg me-2"> {{ user_task[0] }}  </a>
+             {% endfor %}
+    </div>
+
+</div>
+{% endblock %}

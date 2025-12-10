@@ -4,28 +4,32 @@
     <head>
         <meta charset="utf-8">
         <meta name ="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-        {% block styles %}
-            {{ bootstrap.load_css() }}
-        {% endblock %}
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+        <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+
         {% if title %}
             <title>{{ title }}</title>
         {% else %}
             <title>Добро пожаловать</title>
         {% endif %}
     </head>
+
     <body>
-        <nav class="navbar navbar-expand-lg">
-            <div class="container-fluid">
-                <div class="navbar-nav">
+         <nav class="navbar navbar-expand-lg border-bottom shadow-sm">
+              <div class="container d-flex justify-content-center">
+                   <div class="navbar-nav nav-center">
                     {{ render_nav_item('index', 'Главная') }}
                     {{ render_nav_item('assigned_tasks', 'Мои задачи из всех проектов') }}
-                    {{ render_nav_item('projects_list', 'список проектов') }}
-                </div>
-            </div>
+                    {{ render_nav_item('projects_list', 'Список проектов') }}
+                   </div>
+              </div>
         </nav>
-        {% block content %}{% endblock %}
+
+        {% block content %} {% endblock %}
         {% block scripts %}
             {{ bootstrap.load_js() }}
         {% endblock %}
     </body>
 </html>
+
