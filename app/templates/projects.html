@@ -7,6 +7,9 @@
     <div class="text-center mt-5">
         <h1 class="mb-4"> Список моих проектов </h1>
              <p> Подсказка: нажмите на название проекта, чтобы перейти к его описанию </p>
+             <div class="mb-4">
+                <a href="{{ url_for('create_project') }}" class="btn btn-success btn-lg"> Создать новый проект </a>
+             </div>
              {% for user_project in user_projects %}
                 <a href="{{ url_for('check_user_project', project_id = user_project[1]) }}" class="btn btn-primary btn-lg me-2"> {{ user_project[0] }}  </a>
              {% endfor %}

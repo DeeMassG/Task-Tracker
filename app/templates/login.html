@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from 'bootstrap5/form.html' import render_field %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-5">
+            <div class="card mt-3">
+                <div class="card-body">
+                    <h1 class="card-title text-center mb-4">Вход</h1>
+
+                    <form method="POST" action="">
+                        {{ form.hidden_tag() }}
+
+                        <div class="mb-3"> {{ render_field(form.login, form_type="basic") }} </div>
+
+                        <div class="mb-3"> {{ render_field(form.password, form_type="basic") }} </div>
+
+                        <div class="d-grid gap-2"> <button type="submit" class="btn btn-primary btn-lg"> Войти </button> </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

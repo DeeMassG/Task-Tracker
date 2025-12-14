@@ -1,5 +1,6 @@
 from app import app
-from flask import render_template
+from app.forms import RegistrationForm, LoginForm, EditProfileForm, ChangePasswordForm, CreateNewProjectForm, EditTaskForm
+from flask import render_template, request, flash, redirect, url_for, abort
 from flask import request
 import psycopg
 
@@ -65,13 +66,12 @@ def check_task(task_id): # Посмотреть информацию о конк
     with get_db_connection() as con:
         cur = con.cursor() # курсор для выполнения запросов к бд
 
-        task = cur.execute('SELECT t.name, t.deadline, t.priority, t.status, t.description, p.name FROM task as t '
+        task = cur.execute('SELECT t.name, t.deadline, t.priority, t.status, t.description, p.name, t.task_id FROM task as t '
                            'JOIN project as p ON t.project_id = t.project_id JOIN users as u '
                            'ON t.creator_id = u.user_id  WHERE task_id = %s', (task_id,)).fetchone()
 
         login_owner = cur.execute('SELECT u.login FROM users as u JOIN task ON u.user_id = creator_id WHERE task_id = %s', (task_id,)).fetchone()
         login_exec = cur.execute('SELECT u.login FROM users as u JOIN task ON u.user_id = executor_id WHERE task_id = %s', (task_id,)).fetchone()
-
         return render_template('check_task.html', task=task, owner=login_owner, executor=login_exec)
 
 
@@ -125,61 +125,81 @@ def check_profile():  # посмотреть профиль юзера - выв�
         return render_template('profile.html', profile_data=profile_data)
 
 
-@app.route('/login', methods=['GET'])
+@app.route('/login', methods=['GET', 'POST'])
 def login(): # залогиниться (ввести логин пароль)
-    with get_db_connection() as con:
 
-        cur = con.cursor() #Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
-        login_connect = cur.execute( ( )).fetchall()
+    login_form = LoginForm()
+    if login_form.validate_on_submit():
+        with get_db_connection() as con:
+            cur = con.cursor()  # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
+
+            login = cur.execute('SELECT login FROM users WHERE login = %s', (login_form.login.data,)).fetchone()
+            password = cur.execute ('SELECT password FROM users WHERE login = %s', (login_form.login.data, )).fetchone()
+
+            if ((login == login_form.login.data) and (password == login_form.password.data)):
+                flash(f'Добро пожаловать {login_form.login.data}!', category='success')
+                return redirect (url_for('profile'))
 
 
-@app.route('/register', methods=['GET'])
+    return render_template('login.html', form=login_form)
+
+
+
+@app.route('/register', methods=['GET', 'POST'])
 def register(): # зарегистрироваться (создать логин пароль)
-    with get_db_connection() as con:
 
-        cur = con.cursor() #Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
-        user_reg = cur.execute( ( )).fetchall()
+    reg_form = RegistrationForm()
+
+    if reg_form.validate_on_submit(): # этот метод проверяет валидность данных и тип запроса (POST), поэтому
+                    # можно явно не указывать, что эта часть представления обрабатывает пользовательские данные
+        with get_db_connection() as con:
+            cur = con.cursor() #Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
+
+            cur.execute('INSERT INTO users (surname, name, last_name, login, password, birthday, email_adress) VALUES (%s, %s, %s, %s, %s, %s, %s)',
+                        (reg_form.surname.data, reg_form.name.data, reg_form.last_name.data, reg_form.login.data,
+                         reg_form.password.data, reg_form.birthday.data, reg_form.email_adress.data),)
+
+            flash(f'Пользователь {reg_form.login.data} зарегистрирован', category='success')
+            return redirect(url_for('login'))
+
+    return render_template('register.html', form=reg_form)
 
 
 @app.route('/profile/edit', methods=['GET', 'POST'])
 def edit_profile(): # изменить профиль (изменить логин пароль добавить электронную почту), выводим всю информацию о пользователе
-                    # затем добавляем кнопки для изменения данных
+    # затем добавляем кнопки для изменения данных
+    user_id = 3
+
     with get_db_connection() as con:
+        cur = con.cursor()  # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
 
-        user_id = 3
-        cur = con.cursor() #Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
-        # Обработка POST запроса (изменение данных)
-        if request.method == 'POST':
-            # Получаем данные из формы
-            new_surname = request.form.get('surname')
-            new_name = request.form.get('name')
-            new_lastname = request.form.get('last_name')
-            new_login = request.form.get('login')
-            new_password = request.form.get('password')
-            new_birthday = request.form.get('birthday')
-            new_email = request.form.get('email')
+        profile_data = cur.execute('SELECT surname, name, last_name, login, birthday, email_adress FROM users '
+                               'WHERE user_id = %s', (user_id,)).fetchone()
+    profile_data_dictionary = { # оказалось что просто передать нельзя = надо преобразовать кортеж в словарь
+        'surname': profile_data[0],
+        'name': profile_data[1],
+        'last_name': profile_data[2],
+        'login': profile_data[3],
+        'birthday': profile_data[4],
+        'email_adress': profile_data[5]
+    }
 
-            # Обновляем данные в базе
-            cur.execute('UPDATE users SET surname = %s, name = %s, last_name = %s, login = %s, password = %s, '
-                        'birthday = %s, email_adress = %s WHERE user_id = %s', (new_surname, new_name, new_lastname, new_login, new_password, new_birthday, new_email, user_id)).fetchall()
-        else:
-            profile_data = cur.execute('SELECT surname, name, last_name, login, password, birthday, email_adress FROM users '
-                                       'WHERE user_id = %s', (user_id, )).fetchone()
+    edit_profile_form = EditProfileForm(data=profile_data_dictionary) # получили текущие данные и передаём их в форму для отображения
 
-            result = ''
 
-            result += f"<p>Фамилия: {profile_data[0]}</p>"
-            result += f"<p>Имя: {profile_data[1]}</p>"
-            result += f"<p>Отчество: {profile_data[2]}</p>"
-            result += f"<p>Логин: {profile_data[3]}</p>"
-            result += f"<p>Пароль: {profile_data[4]}</p>"
-            result += f"<p>Дата рождения: {profile_data[5]}</p>"
-            result += f"<p>Адрес электронной почты: {profile_data[6]}</p>"
+    if edit_profile_form.validate_on_submit():
+        with get_db_connection() as con:
+            cur = con.cursor()
+            cur.execute('UPDATE users SET surname = %s, name = %s, last_name = %s, login = %s, birthday = %s, email_adress = %s WHERE user_id = %s',
+                        (edit_profile_form.surname.data, edit_profile_form.name.data, edit_profile_form.last_name.data,
+                             edit_profile_form.login.data, edit_profile_form.birthday.data, edit_profile_form.email_adress.data, user_id))
+            flash('Данные успешно обновлены', category='success')
+            return redirect(url_for('check_profile'))
 
-        return render_template('')
+    return render_template('edit_profile.html', form=edit_profile_form)
 
 @app.route('/projects/newproject', methods=['GET', 'POST'])
-def create_project(): # создать проект (ввести название обязательно, дата создания, описание, )
+def create_project(): # создать проект (ввести название обязательно, дата создания, описание)
     with get_db_connection() as con:
 
         cur = con.cursor() #Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
@@ -218,14 +238,41 @@ def edit_project(): # редактировать проект (удалить п
             cur = con.cursor()
             projects = cur.execute( ( )).fetchall()
 
-@app.route('/tasks/<int:task>/edit', methods=['GET', 'POST'])
-def edit_task(): # редактировать задачу (удалить, переименовать, переназначить исполнителя,
+@app.route('/tasks/<int:task_id>/edit', methods=['GET', 'POST'])
+def edit_task(task_id): # редактировать задачу (удалить, переименовать, переназначить исполнителя,
     # изменить приоритет, переназначить дедлайн, изменить статус, изменить описание задачи - что нужно сделать)
     with get_db_connection() as con:
+        cur = con.cursor()  # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
 
-        if request.method == 'POST':
-            name = 0
+        task_data = cur.execute('SELECT name, deadline, priority, status, description, executor_id FROM task '
+                                   'WHERE task_id = %s', (task_id,)).fetchone()
+        # получаю логин исполнителя, чтобы В ФОРМЕ отобразить, кто исполняет задачу (как при просмотре задачи)
+        executor_login = cur.execute('SELECT u.login FROM users as u JOIN task as t ON t.executor_id = u.user_id').fetchone()
 
-        else:
+    task_data_dictionary = {
+        'name': task_data[0],
+        'deadline': task_data[1],
+        'executor_login': executor_login[0],
+        'priority': task_data[2],
+        'status': task_data[3],
+        'description': task_data[4]
+    }
+    # передаю в форму ТЕКУЩИЕ данные задачи
+    edit_task_form = EditTaskForm(data=task_data_dictionary)
+
+    if edit_task_form.validate_on_submit():
+        with get_db_connection() as con:
             cur = con.cursor()
-            projects = cur.execute( ( )).fetchall()
+            # получаем
+            new_exec_id = cur.execute('SELECT t.executor_id FROM task as t JOIN users as u ON t.executor_id = u.user_id '
+                                      'WHERE u.login = edit_task_form.executor_login.data').fetchone()
+
+            cur.execute(
+                'UPDATE task SET name = %s, deadline = %s, executor_id = %s, priority = %s, status = %s WHERE task_id = %s',
+                (edit_task_form.surname.data, edit_task_form.name.data, edit_task_form.last_name.data,
+                 edit_task_form.login.data, edit_task_form.birthday.data, edit_task_form.email_adress.data,
+                 task_id))
+            flash('Данные успешно обновлены', category='success')
+            return redirect(url_for('check_task'))
+
+    return render_template('edit_task.html', form=edit_task_form)

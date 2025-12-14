@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="ru">
 {% from 'bootstrap5/nav.html' import render_nav_item %}
+{% from 'bootstrap5/utils.html' import render_messages %}
     <head>
         <meta charset="utf-8">
         <meta name ="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
@@ -20,11 +21,14 @@
               <div class="container d-flex justify-content-center">
                    <div class="navbar-nav nav-center">
                     {{ render_nav_item('index', 'Главная') }}
-                    {{ render_nav_item('assigned_tasks', 'Мои задачи из всех проектов') }}
+                    {{ render_nav_item('check_profile', 'Профиль') }}
                     {{ render_nav_item('projects_list', 'Список проектов') }}
                    </div>
               </div>
         </nav>
+
+        {{ render_messages() }} <!-- подключаем функцию рендера flash сообщений в стиле Bootstrap,
+                                  хотя можно было задать свои стили для них -->
 
         {% block content %} {% endblock %}
         {% block scripts %}
