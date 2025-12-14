@@ -72,26 +72,26 @@ class DeleteUserFromProjectForm(FlaskForm):
 # class DeleteProjectForm(FlaskForm):
 
 class CreateTaskForm(FlaskForm):
-    name = StringField('Введите название проекта', [validators.Length(max=50),
+    name = StringField('Введите название задачи', [validators.Length(max=50),
                                                     validators.InputRequired(message='Введите название проекта')])
     deadline = DateField('Введите дедлайн задачи', format='%Y-%m-%d') # validators = [validators.InputRequired(message='Введите дедлайн задачи')]
     executor_login = StringField('Введите логин исполнителя', [validators.Length(max=30)]) # исполнитель не обязателен для ввода
     # но должен быть у каждой задачи (по умолчанию сделать создателя)
-    priority = SelectField('Введите номер приоритета от 1 до 3') # необязателен при создании, можно потом изменить
+    priority = SelectField('Выберите номер приоритета от 1 до 3 (высший - 1)') # необязателен при создании, можно потом изменить
     # статус задаю по умолчанию 'новая' - для созданной задачи, а затем можно будет выбрать из выпадающего списка
     description = TextAreaField('Введите описание задачи', [validators.Length(max=2000,message='Максимум 2000 символов'), validators.InputRequired(message='Описание задачи является обязательным полем для заполнения')])
     submit = SubmitField('Создать')
 
 class EditTaskForm(FlaskForm):
-    name = StringField('Введите новое название проекта', [validators.Length(max=50),
+    name = StringField('Введите новое название задачи', [validators.Length(max=50),
                                                     validators.InputRequired(message='Введите название проекта')])
     deadline = DateField('Введите дедлайн задачи',
                          format='%Y-%m-%d')  # validators = [validators.InputRequired(message='Введите дедлайн задачи')]
-    executor_login = StringField('Введите логин нового исполнителя',
+    executor_login = StringField('Введите логин нового исполнителя (если хотите переназначить)',
                               [validators.Length(max=30)])  # логин будет конвертирован в айдишник в самом роуте
     # но должен быть у каждой задачи (по умолчанию сделать создателя)
-    priority = SelectField('Введите номер приоритета от 1 до 3')  # необязателен при создании, можно потом изменить
-    status = SelectField('Выберите статус по задаче', [validators.InputRequired('У задачи должен быть статус')])
+    priority = SelectField('Выберите номер приоритета от 1 до 3 (высший - 1)')  # необязателен при создании, можно потом изменить
+    status = SelectField('Выберите статус задачи',[validators.InputRequired('У задачи должен быть статус')])
     description = TextAreaField('Введите описание задачи',
                                 [validators.Length(max=2000, message='Максимум 2000 символов'),
                                  validators.InputRequired(

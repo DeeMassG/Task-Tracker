@@ -20,10 +20,10 @@
                         <dd class="col-sm-8">{{ task[3] }}</dd>
 
                         <dt class="col-sm-4">Исполнитель:</dt>
-                        <dd class="col-sm-8">{{ owner[0] }}</dd>
+                        <dd class="col-sm-8">{{ executor[0] }}</dd>
 
                         <dt class="col-sm-4">Создатель:</dt>
-                        <dd class="col-sm-8">{{ executor[0] }}</dd>
+                        <dd class="col-sm-8">{{ owner[0] }}</dd>
 
                         <dt class="col-sm-4">Описание:</dt>
                         <dd class="col-sm-8">{{ task[4] }}</dd>
@@ -39,7 +39,7 @@
     <div class="row">
         <div class="col-md-8">
             <div class="d-grid gap-2">
-                <a href="{{ url_for('history_task', task_id = task[6]) }}" class="btn btn-warning btn-lg"> Редактировать задачу </a>
+                <a href="{{ url_for('edit_task', task_id = task[6]) }}" class="btn btn-warning btn-lg"> Редактировать задачу </a>
                 <a href="{{ url_for('history_task', task_id = task[6]) }}" class="btn btn-primary btn-lg"> Последнее изменение задачи </a>
                 <a href="{{ url_for('history_task', task_id = task[6]) }}" class="btn btn-danger btn-lg"> Удалить задачу</a>
             </div>

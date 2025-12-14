@@ -3,6 +3,7 @@ from app.forms import RegistrationForm, LoginForm, EditProfileForm, ChangePasswo
 from flask import render_template, request, flash, redirect, url_for, abort
 from flask import request
 import psycopg
+import datetime
 
 
 @app.route('/', methods=['GET', 'POST'])
@@ -247,7 +248,18 @@ def edit_task(task_id): # редактировать задачу (удалит�
         task_data = cur.execute('SELECT name, deadline, priority, status, description, executor_id FROM task '
                                    'WHERE task_id = %s', (task_id,)).fetchone()
         # получаю логин исполнителя, чтобы В ФОРМЕ отобразить, кто исполняет задачу (как при просмотре задачи)
-        executor_login = cur.execute('SELECT u.login FROM users as u JOIN task as t ON t.executor_id = u.user_id').fetchone()
+        executor_login = cur.execute('SELECT u.login FROM users as u JOIN task as t ON t.executor_id = u.user_id WHERE task_id = %s', (task_id, )).fetchone()
+
+        get_status = cur.execute('SELECT name, name FROM status').fetchall() # получаем статусы, чтобы отобразить
+                                                                   # их в выпадающем списке
+        all_status = [(row[0], row[1]) for row in get_status]
+
+        all_priority = [
+            (1, 1),
+            (2, 2),
+            (3, 3)
+        ]
+
 
     task_data_dictionary = {
         'name': task_data[0],
@@ -259,20 +271,40 @@ def edit_task(task_id): # редактировать задачу (удалит�
     }
     # передаю в форму ТЕКУЩИЕ данные задачи
     edit_task_form = EditTaskForm(data=task_data_dictionary)
+    edit_task_form.status.choices = all_status
+    edit_task_form.priority.choices = all_priority
 
     if edit_task_form.validate_on_submit():
         with get_db_connection() as con:
             cur = con.cursor()
-            # получаем
-            new_exec_id = cur.execute('SELECT t.executor_id FROM task as t JOIN users as u ON t.executor_id = u.user_id '
-                                      'WHERE u.login = edit_task_form.executor_login.data').fetchone()
+            # получаем айди нового исполнителя по введённому логину
+            new_exec_id = cur.execute('SELECT user_id FROM users WHERE login = %s', (edit_task_form.executor_login.data, )).fetchone()
+            if new_exec_id is not None:
+                new_exec_id = new_exec_id[0] # вытаскиваем число из кортежа (тк изначально оно выдаётся в формате (2) )
+            else: new_exec_id = None
+
+            if (new_exec_id is None) or (edit_task_form.deadline.data < datetime.date.today()):
+                if new_exec_id is None:
+                    flash(message='Пользователя с таким логином не существует', category='danger')
+                    return redirect(url_for('edit_task', task_id=task_id))
+                if edit_task_form.deadline.data < datetime.date.today():
+                    flash(message='Дедлайн не может быть прошедшей датой', category='danger')
+                    return redirect(url_for('edit_task', task_id=task_id))
+            # на этом функция прекращает свою работу
 
             cur.execute(
-                'UPDATE task SET name = %s, deadline = %s, executor_id = %s, priority = %s, status = %s WHERE task_id = %s',
-                (edit_task_form.surname.data, edit_task_form.name.data, edit_task_form.last_name.data,
-                 edit_task_form.login.data, edit_task_form.birthday.data, edit_task_form.email_adress.data,
+                'UPDATE task SET name = %s, deadline = %s, executor_id = %s, priority = %s, status = %s, description = %s WHERE task_id = %s',
+                (edit_task_form.name.data, edit_task_form.deadline.data, new_exec_id,
+                 edit_task_form.priority.data, edit_task_form.status.data, edit_task_form.description.data,
                  task_id))
+
+            # тут же создадим запись о новом изменении (нужно определить категорию изменения исходя из ОБНОВЛЁННЫХ ПОЛЕЙ
+            # и записать логин, айди автора изменения, тип изменения, таск айди, текущую дату и время и айди типа изменения
+            # при этом надо выводить ПОСЛЕДНЕЕ ИЗМЕНЕНИЕ ДЛЯ ПРОСМОТРА в задаче - сортирую по дате и вывожу первую
+            # - то есть самое позднее изменение
+
+
             flash('Данные успешно обновлены', category='success')
-            return redirect(url_for('check_task'))
+            return redirect(url_for('check_task', task_id=task_id))
 
     return render_template('edit_task.html', form=edit_task_form)
