@@ -1,5 +1,7 @@
 from app import app
-from app.forms import RegistrationForm, LoginForm, EditProfileForm, ChangePasswordForm, CreateNewProjectForm, EditTaskForm
+from app.forms import (RegistrationForm, LoginForm, EditProfileForm, ChangePasswordForm, CreateNewProjectForm,
+                       AddUserToProjectForm, EditTaskForm, EditProjectForm, DeleteProjectForm, CreateTaskForm, DeleteTaskForm,
+                        DeleteUserFromProjectForm)
 from flask import render_template, request, flash, redirect, url_for, abort
 from flask import request
 import psycopg
@@ -133,13 +135,20 @@ def login(): # залогиниться (ввести логин пароль)
     if login_form.validate_on_submit():
         with get_db_connection() as con:
             cur = con.cursor()  # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
-
+            # проверяем, существует ли такой логин, пытаясь взять его из бд
             login = cur.execute('SELECT login FROM users WHERE login = %s', (login_form.login.data,)).fetchone()
-            password = cur.execute ('SELECT password FROM users WHERE login = %s', (login_form.login.data, )).fetchone()
+            if login is not None:
+                password = cur.execute ('SELECT password FROM users WHERE login = %s', (login, )).fetchone()
+            else:
+                flash(message='Пользователь с таким логином не зарегистрирован', category='danger')
+                return render_template('login.html', form=login_form)
 
-            if ((login == login_form.login.data) and (password == login_form.password.data)):
+            if (login == login_form.login.data) and (password == login_form.password.data):
                 flash(f'Добро пожаловать {login_form.login.data}!', category='success')
                 return redirect (url_for('profile'))
+            else:
+                flash('Пароль или логин введён неверно. Попробуйте снова', category='danger')
+                return render_template('login.html', form=login_form)
 
 
     return render_template('login.html', form=login_form)
@@ -199,45 +208,201 @@ def edit_profile(): # изменить профиль (изменить логи
 
     return render_template('edit_profile.html', form=edit_profile_form)
 
-@app.route('/projects/newproject', methods=['GET', 'POST'])
-def create_project(): # создать проект (ввести название обязательно, дата создания, описание)
-    with get_db_connection() as con:
+@app.route('/profile/edit/password', methods=['GET', 'POST'])
+def change_password():
 
-        cur = con.cursor() #Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
-        if request.method == 'POST':
-            # Получаем данные из формы
-            project_name = request.form.get('name')
+    user_id = 3 # временно, потом поменяю на сессию
+    password_form = ChangePasswordForm()
 
-            name_project = cur.execute( ( )).fetchall()
-
-        else: # выводим форму для заполнения данных
+    if password_form.validate_on_submit():
+        with get_db_connection() as con:
             cur = con.cursor()
 
+            # получим ТЕКУЩИЙ ПАРОЛЬ пользователя
+            current_password = cur.execute('SELECT password FROM users WHERE user_id = %s', (user_id,)).fetchone()
+
+            if current_password == password_form.password.data:
+                cur.execute('UPDATE users SET password = %s WHERE user_id = %s', (password_form.new_password.data,user_id))
+                flash(message='Пароль обновлён', category='success')
+                return redirect(url_for('check_profile'))
+            else:
+                flash(message='Текущий пароль введён неверно', category='danger')
+                return render_template('change_password.html', form=password_form)
+
+    return render_template('change_password.html', form=password_form)
+
+@app.route('/projects/newproject', methods=['GET', 'POST'])
+def create_project(): # создать проект (ввести название обязательно, дата создания, описание)
+
+    user_id = 1 # получаю айди из сессии
+
+    new_project_form = CreateNewProjectForm()
+    date_of_creation = datetime.datetime.today()
+
+    if new_project_form.validate_on_submit():
+
+        with get_db_connection() as con:
+            cur = con.cursor()
+            cur.execute('INSERT INTO project (owner_project_id, name, date_of_creation, description) VALUES (%s, %s, %s, %s)',
+                        (user_id, new_project_form.name.data, date_of_creation, new_project_form.description.data))
+            flash(message='Проект успешно создан', category='success')
+            return redirect(url_for('projects_list'))
+
+
+    return render_template('create_new_project.html', form=new_project_form)
 
 
 
 @app.route('/projects/<int:project_id>/create_task', methods=['GET', 'POST'])
 def create_task(project_id): # создать задачу (ввести название и назначить исполнителя include)
+
+    user_id = 3 # потом подключу сессию
+    creator_id = user_id
     with get_db_connection() as con:
+        cur = con.cursor()
+        login_creator_default = cur.execute('SELECT login FROM users WHERE user_id = %s', (user_id, )).fetchone()
 
-        cur = con.cursor() #Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
+    executor_login = {'executor_login' : login_creator_default[0]} # по умолчанию исполнитель = создатель задачи
 
+    all_priority = [
+        (1, 1),
+        (2, 2),
+        (3, 3)
+    ]
 
-        return render_template('create_task.html', project_id=project_id)
+    create_task_form = CreateTaskForm(data=executor_login)
+    create_task_form.priority.choices = all_priority
 
+    if create_task_form.validate_on_submit():
+        with get_db_connection() as con:
+            cur = con.cursor() # теперь берём айди по логину назначенного юзера
+            executor_id = cur.execute('SELECT user_id FROM users WHERE login = %s',
+                                     (create_task_form.executor_login.data,)).fetchone()
 
+            if (executor_id is None) or (create_task_form.deadline.data < datetime.date.today()):
+                if executor_id is None:
+                    flash(message='Пользователя с таким логином не существует', category='danger')
+                    return render_template('create_task.html', form=create_task_form, project_id=project_id)
+                if create_task_form.deadline.data < datetime.date.today():
+                    flash(message='Дедлайн не может быть прошедшей датой', category='danger')
+                    return render_template('create_task.html', form=create_task_form, project_id=project_id)
+
+            executor_id = executor_id[0]  # вытаскиваем айди из кортежа
+
+            status = cur.execute('SELECT status_id FROM status WHERE name = %s', ('Новая',)).fetchone()
+            status_name = 'Новая'
+            status_id = status[0] # получаю из кортежа запроса айди статуса
+
+            cur.execute('INSERT INTO task (name, deadline, creator_id, executor_id, priority, status, description, status_id, project_id) '
+                        'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)', (create_task_form.name.data, create_task_form.deadline.data,
+            creator_id, executor_id, create_task_form.priority.data, status_name,create_task_form.description.data, status_id, project_id))
+            flash(message='Задача успешно создана', category='success')
+            return redirect(url_for('check_user_project', project_id=project_id))
+
+    return render_template('create_task.html', form=create_task_form, project_id=project_id)
 
 
 @app.route('/projects/<int:project_id>/edit', methods=['GET', 'POST'])
-def edit_project(): # редактировать проект (удалить переименовать назначить дедлайн добавить другого пользователя в проект)
+def edit_project(project_id): # редактировать проект (удалить переименовать назначить дедлайн
     with get_db_connection() as con:
+        cur = con.cursor()
+        project_data = cur.execute('SELECT name, description FROM project WHERE project_id = %s',
+                                   (project_id,)).fetchone()
 
-        if request.method == 'POST':
-            name = 0
+    project_data_dictionary = {
+        'name': project_data[0],
+        'description': project_data[1]
+    }
+    edit_project_form = EditProjectForm(data=project_data_dictionary) # передаю текущее название и описание проекта
 
-        else:
+    if edit_project_form.validate_on_submit():
+        with get_db_connection() as con:
             cur = con.cursor()
-            projects = cur.execute( ( )).fetchall()
+            cur.execute('UPDATE project SET name = %s, description = %s WHERE project_id = %s',
+                        (edit_project_form.name.data, edit_project_form.description.data, project_id))
+            flash('Данные успешно обновлены', category='success')
+            return redirect(url_for('check_user_project',project_id=project_id))
+
+    return render_template('edit_project.html', form=edit_project_form)
+
+@app.route('/projects/<int:project_id>/delete', methods=['GET', 'POST'])
+def delete_project(project_id):
+
+    delete_project_form = DeleteProjectForm()
+
+    if delete_project_form.validate_on_submit():
+        with get_db_connection() as con:
+            cur = con.cursor()
+
+            # сначала удаляем ВСЕ ЗАДАЧИ ИЗ ЭТОГО ПРОЕКТА
+            cur.execute('DELETE FROM task WHERE project_id = %s', (project_id, ))
+            # а теперь сам проект
+            cur.execute('DELETE FROM project WHERE project_id = %s', (project_id, ))
+            flash(message='Проект удалён. Вы перенаправлены на страницу Ваших проектов', category='success')
+            return redirect(url_for('projects_list'))
+
+    return render_template('delete_project.html', form=delete_project_form, project_id=project_id)
+
+@app.route('/project/<int:project_id>/add_user', methods=['GET', 'POST'])
+def add_user_to_project(project_id):
+
+    # проверка на доступ (админ участник) ПО ТЗ ТАКОЕ НЕЛЬЗЯ СДЕЛАТЬ, НО ПОХОЖЕ ПРИДЁТСЯ
+
+    add_user_form = AddUserToProjectForm()
+
+    with get_db_connection() as con:
+        cur = con.cursor()
+
+        # roles = cur.execute('SELECT name FROM roles').fetchall()
+
+
+    if add_user_form.validate_on_submit():
+        with get_db_connection() as con:
+            cur = con.cursor()
+
+            # достаём айдишник добавляемого пользователя, чтобы добавить его в бд
+            user_id = cur.execute('SELECT user_id FROM users WHERE login = %s', (add_user_form.login.data, )).fetchone()
+            if user_id is None:
+                flash(message='Пользователя с таким логином не существует', category='danger')
+                return render_template('add_user_to_project.html', project_id=project_id, form=add_user_form)
+
+            date_add = datetime.datetime.today() # узнаем текущую дату (до дня)
+
+            cur.execute('INSERT INTO part_in_project (user_id, date_add_to_project, project_id) VALUES (%s, %s, %s)', (user_id, date_add, project_id))
+            flash (message=f'Пользователь {{add_user_form.login.data}} добавлен в проект')
+            return redirect(url_for('check_user_project', project_id=project_id))
+
+    return render_template('add_user_to_project.html', project_id=project_id, form=add_user_form)
+
+@app.route('/project/<int:project_id>/del_user', methods=['GET', 'POST'])
+def del_user_from_project(project_id):
+
+    # проверка на доступ (админ участник) ПО ТЗ ТАКОЕ НЕЛЬЗЯ СДЕЛАТЬ, НО ПОХОЖЕ ПРИДЁТСЯ
+
+    del_user_form = DeleteUserFromProjectForm()
+
+    with get_db_connection() as con:
+        cur = con.cursor()
+
+        # roles = cur.execute('SELECT name FROM roles').fetchall()
+
+
+    if del_user_form.validate_on_submit():
+        with get_db_connection() as con:
+            cur = con.cursor()
+
+            # достаём айдишник удаляемого пользователя, чтобы удалить его из бд
+            user_id = cur.execute('SELECT user_id FROM users WHERE login = %s', (del_user_form.login.data, )).fetchone()
+            if user_id is None:
+                flash(message='Пользователя с таким логином не существует', category='danger')
+                return render_template('del_user_from_project.html', project_id=project_id, form=del_user_form)
+
+            cur.execute('DELETE FROM part_in_project WHERE user_id = %s', (user_id,))
+            flash (message=f'Пользователь {{del_user_form.login.data}} удалён из проекта')
+            return redirect(url_for('check_user_project', project_id=project_id))
+
+    return render_template('del_user_from_project.html', project_id=project_id, form=del_user_form)
+
 
 @app.route('/tasks/<int:task_id>/edit', methods=['GET', 'POST'])
 def edit_task(task_id): # редактировать задачу (удалить, переименовать, переназначить исполнителя,
@@ -260,7 +425,6 @@ def edit_task(task_id): # редактировать задачу (удалит�
             (3, 3)
         ]
 
-
     task_data_dictionary = {
         'name': task_data[0],
         'deadline': task_data[1],
@@ -281,16 +445,15 @@ def edit_task(task_id): # редактировать задачу (удалит�
             new_exec_id = cur.execute('SELECT user_id FROM users WHERE login = %s', (edit_task_form.executor_login.data, )).fetchone()
             if new_exec_id is not None:
                 new_exec_id = new_exec_id[0] # вытаскиваем число из кортежа (тк изначально оно выдаётся в формате (2) )
-            else: new_exec_id = None
+
 
             if (new_exec_id is None) or (edit_task_form.deadline.data < datetime.date.today()):
                 if new_exec_id is None:
                     flash(message='Пользователя с таким логином не существует', category='danger')
-                    return redirect(url_for('edit_task', task_id=task_id))
+                    return render_template('edit_task.html', form=edit_task_form)
                 if edit_task_form.deadline.data < datetime.date.today():
                     flash(message='Дедлайн не может быть прошедшей датой', category='danger')
-                    return redirect(url_for('edit_task', task_id=task_id))
-            # на этом функция прекращает свою работу
+                    return render_template('edit_task.html', form=edit_task_form)
 
             cur.execute(
                 'UPDATE task SET name = %s, deadline = %s, executor_id = %s, priority = %s, status = %s, description = %s WHERE task_id = %s',
@@ -306,5 +469,23 @@ def edit_task(task_id): # редактировать задачу (удалит�
 
             flash('Данные успешно обновлены', category='success')
             return redirect(url_for('check_task', task_id=task_id))
+            # на этом функция прекращает свою работу
 
     return render_template('edit_task.html', form=edit_task_form)
+
+@app.route('/tasks/<int:task_id>/delete', methods=['GET', 'POST'])
+def delete_task(task_id):
+
+    delete_task_form = DeleteTaskForm()
+    if delete_task_form.validate_on_submit():
+        with get_db_connection() as con:
+            cur = con.cursor()
+            # узнаю айди проекта из которого удаляется задача, чтобы по нему вернуться в проект
+            project_id = cur.execute('SELECT project_id FROM task WHERE task_id = %s', (task_id,))
+            project_id = project_id[0] # вытаскиваю айдишник из кортежа запроса
+
+            cur.execute('DELETE FROM task WHERE task_id = %s', (task_id,))
+            flash(message='Задача удалена. Вы перенаправлены на страницу проекта', category='success')
+            return redirect(url_for('check_user_project', project_id=project_id))
+
+    return render_template('delete_task.html', form=delete_task_form, task_id=task_id)

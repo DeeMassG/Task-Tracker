@@ -7,22 +7,14 @@
         <div class="col-md-6 col-lg-5">
             <div class="card mt-3">
                 <div class="card-body">
-                    <h1 class="card-title text-center mb-4">Редактирование профиля</h1>
+                    <h1 class="card-title text-center mb-4">Редактирование проекта</h1>
 
                     <form method="POST" action="">
                         {{ form.hidden_tag() }}
 
-                        <div class="mb-3"> {{ render_field(form.surname, form_type="basic") }} </div>
-
                         <div class="mb-3"> {{ render_field(form.name, form_type="basic") }} </div>
 
-                        <div class="mb-3"> {{ render_field(form.last_name, form_type="basic") }} </div>
-
-                        <div class="mb-3"> {{ render_field(form.login, form_type="basic") }} </div>
-
-                        <div class="mb-3"> {{ render_field(form.birthday, form_type="basic") }} </div>
-
-                        <div class="mb-3"> {{ render_field(form.email_adress, placeholder="name@example.com", form_type="basic") }} </div>
+                        <div class="mb-3"> {{ render_field(form.description, form_type="basic") }} </div>
 
                         <div class="d-grid gap-2"> <button type="submit" class="btn btn-primary btn-lg"> Подтвердить изменения </button> </div>
                     </form>
