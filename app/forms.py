@@ -1,5 +1,5 @@
 from flask_wtf import FlaskForm
-from wtforms import BooleanField, StringField, DateField, IntegerField, PasswordField, SubmitField, TextAreaField, validators
+from wtforms import BooleanField, StringField, DateField, IntegerField, PasswordField, SubmitField, TextAreaField, DateTimeLocalField, validators
 from wtforms.fields.choices import SelectField
 
 
@@ -26,8 +26,8 @@ class LoginForm(FlaskForm):
     submit = SubmitField('Войти')
 
 class EditProfileForm(FlaskForm):
-    surname = StringField('Фамилия', [validators.Length(max=30)])
-    name = StringField('Имя', [validators.Length(max=20)])
+    surname = StringField('Фамилия', [validators.Length(max=30), validators.InputRequired(message='Введите фамилию')])
+    name = StringField('Имя', [validators.Length(max=20), validators.InputRequired(message='Введите имя')])
     last_name = StringField('Отчество', [validators.Length(max=30)])
     login = StringField('Логин', [validators.InputRequired(message='Введите логин'), validators.Length(max=30)])
     birthday = DateField('Дата рождения', format='%Y-%m-%d',
@@ -78,7 +78,7 @@ class DeleteUserFromProjectForm(FlaskForm):
 class CreateTaskForm(FlaskForm):
     name = StringField('Введите название задачи', [validators.Length(max=50),
                                                     validators.InputRequired(message='Введите название проекта')])
-    deadline = DateField('Введите дедлайн задачи', format='%Y-%m-%d', validators = [validators.InputRequired(message='Введите дедлайн задачи')])
+    deadline = DateTimeLocalField('Введите дедлайн (дату и время)', format='%Y-%m-%dT%H:%M', validators = [validators.InputRequired()])
     executor_login = StringField('Введите логин исполнителя', [validators.Length(max=30)]) # исполнитель не обязателен для ввода
     # но должен быть у каждой задачи (по умолчанию сделать создателя)
     priority = SelectField('Выберите номер приоритета от 1 до 3 (высший - 1)') # необязателен при создании, можно потом изменить
@@ -90,10 +90,9 @@ class CreateTaskForm(FlaskForm):
 class EditTaskForm(FlaskForm):
     name = StringField('Введите новое название задачи', [validators.Length(max=50),
                                                     validators.InputRequired(message='Введите название проекта')])
-    deadline = DateField('Введите дедлайн задачи',
-                         format='%Y-%m-%d')  # validators = [validators.InputRequired(message='Введите дедлайн задачи')]
+    deadline = DateTimeLocalField('Введите новый дедлайн (дату и время)', format='%Y-%m-%dT%H:%M', validators = [validators.InputRequired()])
     executor_login = StringField('Введите логин нового исполнителя (если хотите переназначить)',
-                              [validators.Length(max=30)])  # логин будет конвертирован в айдишник в самом роуте
+                              [validators.Length(max=30), validators.InputRequired(message='Это поле обязательно для заполнения')])  # логин будет конвертирован в айдишник в самом роуте
     # но должен быть у каждой задачи (по умолчанию сделать создателя)
     priority = SelectField('Выберите номер приоритета от 1 до 3 (высший - 1)')  # необязателен при создании, можно потом изменить
     status = SelectField('Выберите статус задачи',[validators.InputRequired('У задачи должен быть статус')])

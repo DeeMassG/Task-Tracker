@@ -237,12 +237,16 @@ def create_project(): # создать проект (ввести названи
     user_id = 1 # получаю айди из сессии
 
     new_project_form = CreateNewProjectForm()
-    date_of_creation = datetime.datetime.today()
+    date_of_creation = datetime.datetime.today() # --- она больше не нужна
 
     if new_project_form.validate_on_submit():
 
         with get_db_connection() as con:
             cur = con.cursor()
+
+            # здесь же нужно добавить инсерт в таблицу участия в проекте (создатель проекта = админ)
+
+
             cur.execute('INSERT INTO project (owner_project_id, name, date_of_creation, description) VALUES (%s, %s, %s, %s)',
                         (user_id, new_project_form.name.data, date_of_creation, new_project_form.description.data))
             flash(message='Проект успешно создан', category='success')
@@ -366,7 +370,7 @@ def add_user_to_project(project_id):
                 flash(message='Пользователя с таким логином не существует', category='danger')
                 return render_template('add_user_to_project.html', project_id=project_id, form=add_user_form)
 
-            date_add = datetime.datetime.today() # узнаем текущую дату (до дня)
+            date_add = datetime.datetime.today() # узнаем текущую дату (до дня) --- она больше не нужна
 
             cur.execute('INSERT INTO part_in_project (user_id, date_add_to_project, project_id) VALUES (%s, %s, %s)', (user_id, date_add, project_id))
             flash (message=f'Пользователь {{add_user_form.login.data}} добавлен в проект')
