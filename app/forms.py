@@ -17,12 +17,12 @@ class RegistrationForm(FlaskForm):
 
     email_adress = StringField('E-mail', [validators.Length(min=6, max=100),
                                    validators.Email(message='Почта введена некорректно, повторите ввод'), validators.InputRequired(message='Введите E-mail')])
-
     submit = SubmitField('Зарегистрироваться')
 
 class LoginForm(FlaskForm):
     login = StringField('Логин', [validators.InputRequired(message='Это поле обязательно для ввода')])
     password = PasswordField('Пароль', [validators.InputRequired(message='Это поле обязательно для ввода')])
+    remember_me = BooleanField('Запомнить меня')
     submit = SubmitField('Войти')
 
 class EditProfileForm(FlaskForm):

@@ -3,15 +3,37 @@ from app.forms import (RegistrationForm, LoginForm, EditProfileForm, ChangePassw
                        AddUserToProjectForm, EditTaskForm, EditProjectForm, DeleteProjectForm, CreateTaskForm, DeleteTaskForm,
                         DeleteUserFromProjectForm)
 from flask import render_template, request, flash, redirect, url_for, abort
-from flask import request
+from werkzeug.security import generate_password_hash
+from app import login_manager
+from flask_login import UserMixin, login_user, logout_user, current_user
+
 import psycopg
 import datetime
 
 
+# это класс, в котором будут храниться данные вошедшего пользователя
+# Для текущей сессии (поля - это инфа, которую будем использовать в любом месте кода
+class User(UserMixin):
+    def __init__(self, user_id, login, email_adress):
+        self.user_id = user_id
+        self.login = login
+        self.email_adress = email_adress
+
+# Функция load_user(user_id) подгружает данные в current_user из бд, используя user_id - айдишник пользователя
+# а она берёт айди из сессии
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    with get_db_connection() as con:
+        cur = con.cursor()
+        current_user_data = cur.execute('SELECT user_id, login, email_adress FROM users WHERE user_id = %s', (user_id, )).fetchone()
+        # проверку на наличие данных можно не делать, так как сессия уже открыта. Значит юзер вошёл
+        return User(current_user_data[0], current_user_data[1], current_user_data[2])
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     return render_template('index.html')
-
 
 
 def get_db_connection(): # вынесем подключение к бд в отдельную функцию
@@ -22,13 +44,68 @@ def get_db_connection(): # вынесем подключение к бд в от
         dbname=app.config['DB_NAME']
     )
 
+@app.errorhandler(404)
+def page_not_found(error):
+    return render_template('not_found_404.html'), 404
+
+
+@app.route('/register', methods=['GET', 'POST'])
+def register(): # зарегистрироваться (создать логин пароль)
+    if current_user.is_authenticated:
+        return redirect(url_for('login'))
+
+    reg_form = RegistrationForm()
+
+    if reg_form.validate_on_submit(): # этот метод проверяет валидность данных и тип запроса (POST), поэтому
+                    # можно явно не указывать, что эта часть представления обрабатывает пользовательские данные
+
+        password_hash = generate_password_hash(reg_form.password.data) # генерируем хеш пароля
+        with get_db_connection() as con:
+            cur = con.cursor() #Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
+
+            cur.execute('INSERT INTO users (surname, name, last_name, login, password, birthday, email_adress) VALUES (%s, %s, %s, %s, %s, %s, %s)',
+                        (reg_form.surname.data, reg_form.name.data, reg_form.last_name.data, reg_form.login.data,
+                         password_hash, reg_form.birthday.data, reg_form.email_adress.data),)
+
+            flash(f'Пользователь {reg_form.login.data} зарегистрирован', category='success')
+            return redirect(url_for('login'))
+
+    return render_template('register.html', form=reg_form)
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login(): # залогиниться (ввести логин пароль)
+
+    login_form = LoginForm()
+    if login_form.validate_on_submit():
+        with get_db_connection() as con:
+            cur = con.cursor()  # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
+            # проверяем, существует ли такой логин, пытаясь взять его из бд
+            login = cur.execute('SELECT login FROM users WHERE login = %s', (login_form.login.data,)).fetchone()
+            if login is not None:
+                password = cur.execute ('SELECT password FROM users WHERE login = %s', (login, )).fetchone()
+            else:
+                flash(message='Пользователь с таким логином не зарегистрирован', category='danger')
+                return render_template('login.html', form=login_form)
+
+            if (login == login_form.login.data) and (password == login_form.password.data):
+                flash(f'Добро пожаловать {login_form.login.data}!', category='success')
+                return redirect (url_for('profile'))
+            else:
+                flash('Пароль или логин введён неверно. Попробуйте снова', category='danger')
+                return render_template('login.html', form=login_form)
+
+
+    return render_template('login.html', form=login_form)
+
+
 @app.route('/projects', methods=['GET'])
 def projects_list(): # просмотреть список проектов пользователя (список названий с возможностью перейти к каждому проекту (описание))
     with get_db_connection() as con:
-        client_id = 1 # зададим произвольный айди. Получим наверное из сессии (но точно не из предыдущего роута)
+        client_id = 1 # Зададим произвольный айди. Получим наверное из сессии (но точно не из предыдущего роута)
         cur = con.cursor() # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
         user_projects = cur.execute('SELECT p.name, p.project_id FROM users as u JOIN '
-                                    'project as p ON u.user_id = p.owner_project_id WHERE user_id = %s', (client_id, )).fetchall()
+                                    'project as p ON u.user_id = p.creator_project_id WHERE user_id = %s', (client_id, )).fetchall()
 
         return render_template('projects.html', user_projects=user_projects)
 
@@ -83,7 +160,7 @@ def check_user_project(project_id): # посмотреть проект (выв�
     with get_db_connection() as con:
         cur = con.cursor()  # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
         description_project = cur.execute('SELECT login, p.name, date_of_creation, description, p.project_id FROM users as u JOIN '
-                                    'project as p ON u.user_id = p.owner_project_id WHERE project_id = %s',
+                                    'project as p ON u.user_id = p.creator_project_id WHERE project_id = %s',
                                     (project_id,)).fetchone()
 
         return render_template('check_user_project.html', description_project=description_project)
@@ -105,7 +182,7 @@ def assigned_tasks_project(project_id): # посмотреть список на
                               # выводим только названия, по которым можно перейти к самим задачам
 
     with get_db_connection() as con:
-        user_id = 3 # зададим айди пользователя
+        user_id = current_user.user_id # зададим айди пользователя
         project_id = 2 # зададим айди проекта в котором хотим посмотреть
 
         cur = con.cursor() # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
@@ -126,53 +203,6 @@ def check_profile():  # посмотреть профиль юзера - выв�
                                        'WHERE user_id = %s', (user_id, )).fetchone()
 
         return render_template('profile.html', profile_data=profile_data)
-
-
-@app.route('/login', methods=['GET', 'POST'])
-def login(): # залогиниться (ввести логин пароль)
-
-    login_form = LoginForm()
-    if login_form.validate_on_submit():
-        with get_db_connection() as con:
-            cur = con.cursor()  # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
-            # проверяем, существует ли такой логин, пытаясь взять его из бд
-            login = cur.execute('SELECT login FROM users WHERE login = %s', (login_form.login.data,)).fetchone()
-            if login is not None:
-                password = cur.execute ('SELECT password FROM users WHERE login = %s', (login, )).fetchone()
-            else:
-                flash(message='Пользователь с таким логином не зарегистрирован', category='danger')
-                return render_template('login.html', form=login_form)
-
-            if (login == login_form.login.data) and (password == login_form.password.data):
-                flash(f'Добро пожаловать {login_form.login.data}!', category='success')
-                return redirect (url_for('profile'))
-            else:
-                flash('Пароль или логин введён неверно. Попробуйте снова', category='danger')
-                return render_template('login.html', form=login_form)
-
-
-    return render_template('login.html', form=login_form)
-
-
-
-@app.route('/register', methods=['GET', 'POST'])
-def register(): # зарегистрироваться (создать логин пароль)
-
-    reg_form = RegistrationForm()
-
-    if reg_form.validate_on_submit(): # этот метод проверяет валидность данных и тип запроса (POST), поэтому
-                    # можно явно не указывать, что эта часть представления обрабатывает пользовательские данные
-        with get_db_connection() as con:
-            cur = con.cursor() #Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
-
-            cur.execute('INSERT INTO users (surname, name, last_name, login, password, birthday, email_adress) VALUES (%s, %s, %s, %s, %s, %s, %s)',
-                        (reg_form.surname.data, reg_form.name.data, reg_form.last_name.data, reg_form.login.data,
-                         reg_form.password.data, reg_form.birthday.data, reg_form.email_adress.data),)
-
-            flash(f'Пользователь {reg_form.login.data} зарегистрирован', category='success')
-            return redirect(url_for('login'))
-
-    return render_template('register.html', form=reg_form)
 
 
 @app.route('/profile/edit', methods=['GET', 'POST'])
@@ -247,7 +277,7 @@ def create_project(): # создать проект (ввести названи
             # здесь же нужно добавить инсерт в таблицу участия в проекте (создатель проекта = админ)
 
 
-            cur.execute('INSERT INTO project (owner_project_id, name, date_of_creation, description) VALUES (%s, %s, %s, %s)',
+            cur.execute('INSERT INTO project (creator_project_id, name, date_of_creation, description) VALUES (%s, %s, %s, %s)',
                         (user_id, new_project_form.name.data, date_of_creation, new_project_form.description.data))
             flash(message='Проект успешно создан', category='success')
             return redirect(url_for('projects_list'))

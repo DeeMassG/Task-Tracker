@@ -3,7 +3,7 @@ body {
     color: #ffffff;
     font-family: Arial, sans-serif;
     margin: 0;
-    padding: 20px;
+    padding: 200px;
 }
 
 button, .btn {
@@ -15,6 +15,7 @@ button, .btn {
     cursor: pointer;
     font-size: 16px;
 }
+<!-- цвет кнопки при наведении на неё -->
 
 button:hover, .btn:hover {
     background-color: #294a75;
@@ -29,6 +30,6 @@ button:hover, .btn:hover {
     box-shadow: 0 0 12px rgba(0,0,0,0.4);
 }
 
-h1, h2, h3 {
+h1, h2 {
     color: #7ab8ff;
 }

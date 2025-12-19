@@ -1,3 +1,4 @@
+flask-login
 wtforms
 flask-wtf
 bootstrap-flask
