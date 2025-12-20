@@ -5,7 +5,7 @@
 <div class="container">
 
     <div class="text-center mt-5">
-        <h1 class="mb-4"> Все задачи в проекте "{{project_name[0]}}" </h1>
+        <h2 class="mb-4"> Все задачи в проекте "{{project_name[0]}}" </h2>
 
              <p> Подсказка: нажмите на название задачи, чтобы перейти к её описанию </p>
              {% if user_tasks %}
@@ -15,6 +15,9 @@
              {% else %}
                 <h4> В этом проекте пока нет задач </h4>
              {% endif %}
+    </div>
+    <div class="container text text-center">
+        <a href="{{ url_for('check_user_project', project_id=project_id)}}" class="btn btn-success btn-lg mt-3"> Вернуться к проекту </a>
     </div>
 
 </div>

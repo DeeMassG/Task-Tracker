@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <table class="table table-bordered text-center">
+  <thead>
+    <tr>
+      <th scope="col" class="col-1"> Номер </th>
+      <th scope="col" class="col-2"> Логин </th>
+      <th scope="col" class="col-1"> Роль в проекте </th>
+      <th scope="col" class="col-2"> Дата добавления </th>
+      <th scope="col" class="col-4"> Email </th>
+    </tr>
+  </thead>
+    <tbody>
+    {% if members_of_project %}
+        {% for member in members_of_project %}
+            <tr>
+              <th scope="row"> </th>
+              <td> {{member[0]}} </td>
+              <td> {{member[1]}} </td>
+              <td> {{member[2]}} </td>
+              <td> {{member[3]}} </td>
+            </tr>
+        {% endfor %}
+    {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<div class="container">
+     <div class="text text-center">
+            {% if members_of_project %}
+                <h6> </h6>
+            {% else %}
+                <h4> В этом проекте нет участников </h4>
+            {% endif %}
+            <a href="{{ url_for('check_user_project', project_id=project_id)}}" class="btn btn-success btn-lg mt-3"> Вернуться к проекту </a>
+     </div>
+</div>
+{% endblock %}

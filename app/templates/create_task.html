@@ -16,7 +16,9 @@
 
                         <div class="mb-3"> {{ render_field(form.deadline, form_type="basic") }} </div>
 
-                        <div class="mb-3"> {{ render_field(form.executor_login, form_type="basic") }} </div>
+                        {% if role_user == role_owner %}
+                            <div class="mb-3"> {{ render_field(form.executor_login, form_type="basic") }} </div>
+                        {% endif %}
 
                         <div class="mb-3"> {{ render_field(form.priority, form_type="basic") }} </div>
 
