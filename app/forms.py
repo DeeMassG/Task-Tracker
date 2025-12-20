@@ -66,7 +66,7 @@ class DeleteProjectForm(FlaskForm):
 class AddUserToProjectForm(FlaskForm): # добавление нового участника в проект (он тоже владелец проекта)
     login = StringField('Введите логин пользователя, которого хотите добавить в проект',
                         [validators.Length(max=30), validators.InputRequired(message='Данные не введены, повторите')])
-    role = StringField('Выберите роль пользователя в проекте', [validators.InputRequired(message='Выберите роль пользователя в проекте')])
+    role = SelectField('Выберите роль пользователя в проекте', [validators.InputRequired(message='Выберите роль пользователя в проекте')])
     submit = SubmitField('Добавить пользователя')
 
 class DeleteUserFromProjectForm(FlaskForm):

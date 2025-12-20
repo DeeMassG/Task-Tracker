@@ -7,9 +7,16 @@
     <div class="text-center mt-5">
         <h1 class="mb-4"> Список назначенных мне задач из всех проектов </h1>
         <p> Подсказка: нажмите на название задачи, чтобы перейти к её содержимому </p>
-             {% for task in assigned_tasks %}
-                <a href="{{ url_for('assigned_tasks', login = task[1]) }}" class="btn btn-primary btn-lg me-2"> {{ task[0] }}  </a>
-             {% endfor %}
+        {% if assigned_tasks %}
+
+            {% for task in assigned_tasks %}
+                <a href="{{ url_for('check_task, task_id = task[0]') }}" class="btn btn-primary btn-lg me-2"> {{ task[1] }}  </a>
+            {% endfor %}
+        {% else %}
+        <div class="container mt-3">
+            <h4> Назначенных Вам задач нет. Можно отдыхать:) </h4>
+        </div>
+        {% endif %}
     </div>
 
 </div>

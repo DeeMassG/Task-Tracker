@@ -5,14 +5,15 @@
 <div class="container">
 
     <div class="text-center mt-5">
-        <h1 class="mb-4"> Список моих проектов </h1>
+        <h1 class="mb-4"> Список назначенных мне задач в проекте "{{project_name[0]}}" </h1>
         <h1>  </h1>
-             {% for user_project in user_projects %}
-                <a href="{{ url_for('projects_list', ) }}" class="btn btn-primary btn-lg me-2"> Войти </a>
-                <a href="{{ url_for('register') }}" class="btn btn-primary btn-lg"> Зарегистрироваться </a>
-
-
-
+        {% if user_projects %}
+             {% for user_task in user_tasks %}
+                <a href="{{ url_for('check_task', task_id = user_task[1]) }}" class="btn btn-info btn-lg me-2 mb-2"> {{ user_task[0] }}  </a>
+             {% endfor %}
+        {% else %}
+            <h4> У Вас нет задач в этом проекте </h4>
+        {% endif %}
     </div>
-
 </div>
+{% endblock %}

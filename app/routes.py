@@ -3,10 +3,10 @@ from app.forms import (RegistrationForm, LoginForm, EditProfileForm, ChangePassw
                        AddUserToProjectForm, EditTaskForm, EditProjectForm, DeleteProjectForm, CreateTaskForm, DeleteTaskForm,
                         DeleteUserFromProjectForm)
 from flask import render_template, request, flash, redirect, url_for, abort
-from werkzeug.security import generate_password_hash
+from werkzeug.security import generate_password_hash, check_password_hash
 from app import login_manager
-from flask_login import UserMixin, login_user, logout_user, current_user
-
+from flask_login import UserMixin, login_required, login_user, logout_user, current_user
+from urllib.parse import urlsplit
 import psycopg
 import datetime
 
@@ -18,6 +18,9 @@ class User(UserMixin):
         self.user_id = user_id
         self.login = login
         self.email_adress = email_adress
+
+    def get_id(self): # переопределим метод, чтобы в коде можно было обращаться к полю user_id а не id
+        return str(self.user_id)
 
 # Функция load_user(user_id) подгружает данные в current_user из бд, используя user_id - айдишник пользователя
 # а она берёт айди из сессии
@@ -52,96 +55,129 @@ def page_not_found(error):
 @app.route('/register', methods=['GET', 'POST'])
 def register(): # зарегистрироваться (создать логин пароль)
     if current_user.is_authenticated:
-        return redirect(url_for('login'))
+        flash(message='Вы уже зарегистрированы', category='warning')
+        return redirect(url_for('index'))
 
     reg_form = RegistrationForm()
 
     if reg_form.validate_on_submit(): # этот метод проверяет валидность данных и тип запроса (POST), поэтому
                     # можно явно не указывать, что эта часть представления обрабатывает пользовательские данные
 
-        password_hash = generate_password_hash(reg_form.password.data) # генерируем хеш пароля
         with get_db_connection() as con:
             cur = con.cursor() #Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
 
+            check_login = cur.execute('SELECT login FROM users WHERE login = %s', (reg_form.login.data, )).fetchone() # проверим, есть ли юзер с таким же именем
+            if (check_login is not None) and (check_login != reg_form.login.data):
+                flash(message=f'Пользователь с именем { reg_form.login.data } уже зарегистрирован!', category='warning')
+                return render_template('register.html', form=reg_form)
+
+            password_hash = generate_password_hash(reg_form.password.data)  # генерируем хеш пароля
             cur.execute('INSERT INTO users (surname, name, last_name, login, password, birthday, email_adress) VALUES (%s, %s, %s, %s, %s, %s, %s)',
                         (reg_form.surname.data, reg_form.name.data, reg_form.last_name.data, reg_form.login.data,
                          password_hash, reg_form.birthday.data, reg_form.email_adress.data),)
 
-            flash(f'Пользователь {reg_form.login.data} зарегистрирован', category='success')
+            flash(f'Пользователь { reg_form.login.data } зарегистрирован. Вы перенаправлены на страницу для входа.', category='success')
             return redirect(url_for('login'))
 
     return render_template('register.html', form=reg_form)
 
 
 @app.route('/login', methods=['GET', 'POST'])
-def login(): # залогиниться (ввести логин пароль)
+def login(): # нужно залогинить юзера, подключить ему сессию
+    if current_user.is_authenticated:
+        flash(message='Вы уже вошли в систему', category='warning')
+        return redirect(url_for('index')) # если юзер вдруг решит войти повторно
 
     login_form = LoginForm()
     if login_form.validate_on_submit():
         with get_db_connection() as con:
             cur = con.cursor()  # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
             # проверяем, существует ли такой логин, пытаясь взять его из бд
-            login = cur.execute('SELECT login FROM users WHERE login = %s', (login_form.login.data,)).fetchone()
-            if login is not None:
-                password = cur.execute ('SELECT password FROM users WHERE login = %s', (login, )).fetchone()
-            else:
-                flash(message='Пользователь с таким логином не зарегистрирован', category='danger')
-                return render_template('login.html', form=login_form)
+            user_data = cur.execute('SELECT user_id, login, password, email_adress FROM users WHERE login = %s', (login_form.login.data,)).fetchone()
+            if user_data is None or not check_password_hash(user_data[2], login_form.password.data):
+                if user_data is None:
+                    flash(message='Логин введён неверно', category='danger')
+                    return render_template('login.html', form=login_form)
+                else:
+                    flash(message='Неверное имя пользователя или пароль', category='danger')
+                    return render_template('login.html', form=login_form)
+            user_id = user_data[0]
+            login = user_data[1]
+            email_adress = user_data[3]
 
-            if (login == login_form.login.data) and (password == login_form.password.data):
-                flash(f'Добро пожаловать {login_form.login.data}!', category='success')
-                return redirect (url_for('profile'))
-            else:
-                flash('Пароль или логин введён неверно. Попробуйте снова', category='danger')
-                return render_template('login.html', form=login_form)
-
+            user = User(user_id, login, email_adress)
+            login_user(user, remember=login_form.remember_me.data)
+            flash(message=f'Добро пожаловать, { current_user.login }' , category='success')
+            next = request.args.get('next')
+            if not next or urlsplit(next).netloc != '': # проверяем есть ли редирект на чужой ресурс
+                next = url_for('index')
+            return redirect(next)
 
     return render_template('login.html', form=login_form)
 
 
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    flash('Вы вышли из системы', category='info')
+    return redirect(url_for('index'))
+
+
 @app.route('/projects', methods=['GET'])
+@login_required
 def projects_list(): # просмотреть список проектов пользователя (список названий с возможностью перейти к каждому проекту (описание))
     with get_db_connection() as con:
-        client_id = 1 # Зададим произвольный айди. Получим наверное из сессии (но точно не из предыдущего роута)
-        cur = con.cursor() # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
+        client_id = current_user.user_id
+        cur = con.cursor()
+        # надо вывести проекты пользователя и совместные проекты разделив их на две группы
+
+        # Свои проекты = значит он создатель
         user_projects = cur.execute('SELECT p.name, p.project_id FROM users as u JOIN '
                                     'project as p ON u.user_id = p.creator_project_id WHERE user_id = %s', (client_id, )).fetchall()
 
-        return render_template('projects.html', user_projects=user_projects)
+        role_names = cur.execute('SELECT role_name FROM role').fetchall()
+
+        # совместные проекты = создатель не он и он либо админ, либо участник
+        shared_projects = cur.execute('SELECT p.name, p.project_id FROM project as p JOIN part_in_project as pp ON  p.project_id = pp.project_id '
+                                      'WHERE pp.user_id <> p.creator_project_id AND pp.role_name IN (%s)', (role_names, )).fetchall()
+
+        return render_template('projects.html', user_projects=user_projects, shared_projects=shared_projects)
+
 
 @app.route('/allmytasks', methods=['GET'])
+@login_required
 def assigned_tasks(): # просмотреть список назначенных пользователю задач среди всех проектов (по ним можно перейти к самим задачам)
     with get_db_connection() as con:
 
-        client_id = 3 # получаем айди клиента из сессии и передаём его в запрос
+        client_id = current_user.user_id # получаем айди клиента из сессии и передаём его в запрос
         cur = con.cursor()
-        assigned_tasks = cur.execute('SELECT t.name, u.login FROM users as u JOIN '
+        assigned_tasks = cur.execute('SELECT t.task_id, t.name FROM users as u JOIN '
                                     'task as t ON u.user_id = t.executor_id'
                                      ' WHERE user_id = %s', (client_id, )).fetchall()
-        #result = "<h1>Список моих проектов:</h1>"
 
-        return render_template ('all_my_tasks', assigned_tasks = assigned_tasks) # передаём в шаблон логин
+        return render_template ('all_my_tasks', assigned_tasks = assigned_tasks) # передаём в шаблон список задач
 
-#---------------------------------------------------------
+
 @app.route('/tasks/<int:task_id>/history', methods=['GET'])
+@login_required
 def history_task(task_id): # просмотреть историю задачи (название проекта откуда она, название задачи
                     # логин автора изменения, тип изменения и дата
     with get_db_connection() as con:
-        task_id = 2 # получаем айди задачи, информацию о которой хотим посмотреть
         cur = con.cursor()  # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
 
         # сначала получаем инфо о задаче
         task = cur.execute('SELECT p.name, t.name FROM task as t JOIN '
                                     'project as p ON t.project_id = p.project_id WHERE task_id = %s',
                                     (task_id,)).fetchone()
-
-        # теперь получаем инфо об изменениях этой задачи
-        history = cur.execute('SELECT c.change_author, type, c.data_change FROM change as c WHERE task_id = %s', (task_id, )).fetchone()
-        # выводим историю конкретной задачи с указанием названия проекта и задачи
+        # теперь получаем инфо о последнем изменении этой задачи
+        history = cur.execute('SELECT c.change_author, type, c.data_change FROM change as c WHERE task_id = %s ORDER BY change_id DESC LIMIT 1', (task_id, )).fetchone()
 
         return render_template('task_history.html', task=task, history=history)
 
+
 @app.route('/tasks/<int:task_id>', methods = (['GET']))
+@login_required
 def check_task(task_id): # Посмотреть информацию о конкретной задаче в проекте
     with get_db_connection() as con:
         cur = con.cursor() # курсор для выполнения запросов к бд
@@ -156,16 +192,21 @@ def check_task(task_id): # Посмотреть информацию о конк
 
 
 @app.route('/projects/<int:project_id>', methods=['GET'])
+@login_required
 def check_user_project(project_id): # посмотреть проект (вывести инфо о нём без задач)
     with get_db_connection() as con:
         cur = con.cursor()  # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
         description_project = cur.execute('SELECT login, p.name, date_of_creation, description, p.project_id FROM users as u JOIN '
                                     'project as p ON u.user_id = p.creator_project_id WHERE project_id = %s',
                                     (project_id,)).fetchone()
+        # выведем роль пользователя в этом проекте (уровень доступа, его возможности в проекте)
+        client_id = current_user.user_id
+        role_in_project = cur.execute('SELECT role_name FROM part_in_project WHERE project_id = %s AND user_id = %s', (project_id, client_id, )).fetchone()
 
-        return render_template('check_user_project.html', description_project=description_project)
+        return render_template('check_user_project.html', description_project=description_project, role_in_project=role_in_project)
 
 @app.route('/projects/<int:project_id>/tasks', methods=['GET'])
+@login_required
 def tasks_list_project(project_id): # посмотреть список всех задач в конкретном проекте (выводим названия
                           # по которым можно перейти к конкретным задачам
     with get_db_connection() as con:
@@ -178,25 +219,27 @@ def tasks_list_project(project_id): # посмотреть список всех
         return render_template('tasks_list_project.html', user_tasks=user_tasks, project_name=project_name)
 
 @app.route('/projects/<int:project_id>/assigned_tasks', methods=['GET'])
+@login_required
 def assigned_tasks_project(project_id): # посмотреть список назначенных пользователю задач в проекте
                               # выводим только названия, по которым можно перейти к самим задачам
 
     with get_db_connection() as con:
         user_id = current_user.user_id # зададим айди пользователя
-        project_id = 2 # зададим айди проекта в котором хотим посмотреть
-
         cur = con.cursor() # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
 
-        user_tasks = cur.execute('SELECT t.name FROM users as u JOIN '
+        project_name = cur.execute('SELECT name FROM project WHERE project_id = %s', (project_id,)).fetchone()
+
+        user_tasks = cur.execute('SELECT t.name, t.task_id FROM users as u JOIN '
                                     'task as t ON u.user_id = t.executor_id'
                                      ' WHERE user_id = %s AND project_id = %s', (user_id, project_id )).fetchall()
-        return render_template('assigned_tasks_project.html', user_tasks=user_tasks)
+        return render_template('assigned_tasks_project.html', user_tasks=user_tasks, project_name=project_name)
 
 @app.route('/profile', methods=['GET'])
+@login_required
 def check_profile():  # посмотреть профиль юзера - выводим всю информацию о пользователе
 
     with get_db_connection() as con:
-        user_id = 3
+        user_id = current_user.user_id
         cur = con.cursor()  # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
 
         profile_data = cur.execute('SELECT surname, name, last_name, login, birthday, email_adress FROM users '
@@ -206,9 +249,9 @@ def check_profile():  # посмотреть профиль юзера - выв�
 
 
 @app.route('/profile/edit', methods=['GET', 'POST'])
+@login_required
 def edit_profile(): # изменить профиль (изменить логин пароль добавить электронную почту), выводим всю информацию о пользователе
-    # затем добавляем кнопки для изменения данных
-    user_id = 3
+    user_id = current_user.user_id
 
     with get_db_connection() as con:
         cur = con.cursor()  # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
@@ -239,9 +282,10 @@ def edit_profile(): # изменить профиль (изменить логи
     return render_template('edit_profile.html', form=edit_profile_form)
 
 @app.route('/profile/edit/password', methods=['GET', 'POST'])
+@login_required
 def change_password():
 
-    user_id = 3 # временно, потом поменяю на сессию
+    user_id = current_user.user_id
     password_form = ChangePasswordForm()
 
     if password_form.validate_on_submit():
@@ -262,9 +306,10 @@ def change_password():
     return render_template('change_password.html', form=password_form)
 
 @app.route('/projects/newproject', methods=['GET', 'POST'])
+@login_required
 def create_project(): # создать проект (ввести название обязательно, дата создания, описание)
 
-    user_id = 1 # получаю айди из сессии
+    user_id = current_user.user_id
 
     new_project_form = CreateNewProjectForm()
     date_of_creation = datetime.datetime.today() # --- она больше не нужна
@@ -288,9 +333,10 @@ def create_project(): # создать проект (ввести названи
 
 
 @app.route('/projects/<int:project_id>/create_task', methods=['GET', 'POST'])
+@login_required
 def create_task(project_id): # создать задачу (ввести название и назначить исполнителя include)
 
-    user_id = 3 # потом подключу сессию
+    user_id = current_user.user_id
     creator_id = user_id
     with get_db_connection() as con:
         cur = con.cursor()
@@ -337,6 +383,7 @@ def create_task(project_id): # создать задачу (ввести наз�
 
 
 @app.route('/projects/<int:project_id>/edit', methods=['GET', 'POST'])
+@login_required
 def edit_project(project_id): # редактировать проект (удалить переименовать назначить дедлайн
     with get_db_connection() as con:
         cur = con.cursor()
@@ -360,6 +407,7 @@ def edit_project(project_id): # редактировать проект (уда�
     return render_template('edit_project.html', form=edit_project_form)
 
 @app.route('/projects/<int:project_id>/delete', methods=['GET', 'POST'])
+@login_required
 def delete_project(project_id):
 
     delete_project_form = DeleteProjectForm()
@@ -378,6 +426,7 @@ def delete_project(project_id):
     return render_template('delete_project.html', form=delete_project_form, project_id=project_id)
 
 @app.route('/project/<int:project_id>/add_user', methods=['GET', 'POST'])
+@login_required
 def add_user_to_project(project_id):
 
     # проверка на доступ (админ участник) ПО ТЗ ТАКОЕ НЕЛЬЗЯ СДЕЛАТЬ, НО ПОХОЖЕ ПРИДЁТСЯ
@@ -387,8 +436,9 @@ def add_user_to_project(project_id):
     with get_db_connection() as con:
         cur = con.cursor()
 
-        # roles = cur.execute('SELECT name FROM roles').fetchall()
-
+        roles = cur.execute('SELECT role_name FROM role ORDER BY role_name DESC').fetchall()
+        roles = [(row[0]) for row in roles] # вытаскиваем из списка кортежей роли в проекте (desc чтобы первым в списке была роль участник)
+        add_user_form.role.choices = roles
 
     if add_user_form.validate_on_submit():
         with get_db_connection() as con:
@@ -400,18 +450,22 @@ def add_user_to_project(project_id):
                 flash(message='Пользователя с таким логином не существует', category='danger')
                 return render_template('add_user_to_project.html', project_id=project_id, form=add_user_form)
 
-            date_add = datetime.datetime.today() # узнаем текущую дату (до дня) --- она больше не нужна
-
-            cur.execute('INSERT INTO part_in_project (user_id, date_add_to_project, project_id) VALUES (%s, %s, %s)', (user_id, date_add, project_id))
+            cur.execute('INSERT INTO part_in_project (user_id, project_id) VALUES (%s, %s)', (user_id, project_id, ))
             flash (message=f'Пользователь {{add_user_form.login.data}} добавлен в проект')
             return redirect(url_for('check_user_project', project_id=project_id))
 
     return render_template('add_user_to_project.html', project_id=project_id, form=add_user_form)
 
 @app.route('/project/<int:project_id>/del_user', methods=['GET', 'POST'])
+@login_required
 def del_user_from_project(project_id):
 
     # проверка на доступ (админ участник) ПО ТЗ ТАКОЕ НЕЛЬЗЯ СДЕЛАТЬ, НО ПОХОЖЕ ПРИДЁТСЯ
+    # создателя никто удалить не может, а удалять В ПРИНЦИПЕ может только владелец по роли
+
+    ''' а если я удалю пользователя из проекта, где есть задачи на которые он назначен или те которые он создал то что будет
+    1) если назначен = значит удалится исполнитель (задача останется без исполнителя null, но можно назначить)
+    2) ничего не произойдёт так как в системе он не удалён '''
 
     del_user_form = DeleteUserFromProjectForm()
 
@@ -438,7 +492,20 @@ def del_user_from_project(project_id):
     return render_template('del_user_from_project.html', project_id=project_id, form=del_user_form)
 
 
+@app.route('/project/<int:project_id>/members_of_project', methods=['GET'])
+@login_required
+def members_of_project(project_id):
+    with get_db_connection() as con:
+        cur = con.cursor()
+        members_of_project = cur.execute('SELECT u.login, pp.role_name, pp.date_add_to_project, u.email_adress '
+                                         'FROM users as u JOIN part_in_project as pp ON pp.user_id = u.user_id '
+                                         'WHERE pp.project_id = %s', (project_id,)).fetchall()
+
+        return render_template('members_of_project.html', members_of_project=members_of_project, project_id=project_id)
+
+
 @app.route('/tasks/<int:task_id>/edit', methods=['GET', 'POST'])
+@login_required
 def edit_task(task_id): # редактировать задачу (удалить, переименовать, переназначить исполнителя,
     # изменить приоритет, переназначить дедлайн, изменить статус, изменить описание задачи - что нужно сделать)
     with get_db_connection() as con:
@@ -508,14 +575,19 @@ def edit_task(task_id): # редактировать задачу (удалит�
     return render_template('edit_task.html', form=edit_task_form)
 
 @app.route('/tasks/<int:task_id>/delete', methods=['GET', 'POST'])
+@login_required
 def delete_task(task_id):
+
+    # тоже нужна проверка на доступ. Если в проекте ты владелец или эту задачу создал ты для себя,
+    # то можешь удалять. Селектом получаем роль юзера в проекте, а вторым селектом кто создатель.
+    # если одно или другое то удаляем
 
     delete_task_form = DeleteTaskForm()
     if delete_task_form.validate_on_submit():
         with get_db_connection() as con:
             cur = con.cursor()
             # узнаю айди проекта из которого удаляется задача, чтобы по нему вернуться в проект
-            project_id = cur.execute('SELECT project_id FROM task WHERE task_id = %s', (task_id,))
+            project_id = cur.execute('SELECT project_id FROM task WHERE task_id = %s', (task_id,)).fetchone()
             project_id = project_id[0] # вытаскиваю айдишник из кортежа запроса
 
             cur.execute('DELETE FROM task WHERE task_id = %s', (task_id,))

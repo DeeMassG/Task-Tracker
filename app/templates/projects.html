@@ -10,9 +10,29 @@
              <div class="mb-4">
                 <a href="{{ url_for('create_project') }}" class="btn btn-success btn-lg"> Создать новый проект </a>
              </div>
-             {% for user_project in user_projects %}
-                <a href="{{ url_for('check_user_project', project_id = user_project[1]) }}" class="btn btn-primary btn-lg me-2 mb-2"> {{ user_project[0] }}  </a>
-             {% endfor %}
+             {% if user_projects %}
+                {% for user_project in user_projects %}
+                    <a href="{{ url_for('check_user_project', project_id = user_project[1]) }}" class="btn btn-primary btn-lg me-2 mb-2"> {{ user_project[0] }}  </a>
+                {% endfor %}
+             {% else %}
+                <div>
+                    <h5> У Вас пока нет проектов </h5>
+                </div>
+             {% endif %}
+
+             <div class="container mt-5">
+                <h2> --- Ваши совместные проекты --- </h2>
+             </div>
+
+             {% if user_projects %}
+                {% for shared_project in shared_projects %}
+                    <a href="{{ url_for('check_user_project', project_id = shared_project[1]) }}" class="btn btn-primary btn-lg me-2 mb-2"> {{ shared_project[0] }}  </a>
+                {% endfor %}
+             {% else %}
+                <div class="container mt-3">
+                    <h5> У Вас пока нет совместных проектов </h5>
+                </div>
+             {% endif %}
     </div>
 
 </div>
