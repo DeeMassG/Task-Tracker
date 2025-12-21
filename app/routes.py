@@ -1,7 +1,7 @@
 from app import app
 from app.forms import (RegistrationForm, LoginForm, EditProfileForm, ChangePasswordForm, CreateNewProjectForm,
                        AddUserToProjectForm, EditTaskForm, EditProjectForm, DeleteProjectForm, CreateTaskForm, DeleteTaskForm,
-                        DeleteUserFromProjectForm)
+                        DeleteUserFromProjectForm, OutOfProjectForm)
 from flask import render_template, request, flash, redirect, url_for, abort
 from werkzeug.security import generate_password_hash, check_password_hash
 from app import login_manager
@@ -164,15 +164,14 @@ def assigned_tasks(): # просмотреть список назначенны
 def history_task(task_id): # просмотреть историю задачи (название проекта откуда она, название задачи
                     # логин автора изменения, тип изменения и дата
     with get_db_connection() as con:
-        cur = con.cursor()  # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
-
+        cur = con.cursor()
         # сначала получаем инфо о задаче
         task = cur.execute('SELECT p.name, t.name FROM task as t JOIN '
                                     'project as p ON t.project_id = p.project_id WHERE task_id = %s',
                                     (task_id,)).fetchone()
         # теперь получаем инфо о последнем изменении этой задачи
-        history = cur.execute('SELECT c.change_author, type, c.data_change FROM change as c WHERE task_id = %s ORDER BY change_id DESC LIMIT 1', (task_id, )).fetchone()
-
+        history = cur.execute('SELECT change_author, type, data_change FROM change WHERE task_id = %s ORDER BY change_id DESC LIMIT 1', (task_id, )).fetchone()
+        # return [history for history in history]
         return render_template('task_history.html', task=task, history=history)
 
 
@@ -202,8 +201,11 @@ def check_user_project(project_id): # посмотреть проект (выв�
         # выведем роль пользователя в этом проекте (уровень доступа, его возможности в проекте)
         client_id = current_user.user_id
         role_in_project = cur.execute('SELECT role_name FROM part_in_project WHERE project_id = %s AND user_id = %s', (project_id, client_id, )).fetchone()
+        role_in_project = role_in_project[0] # вытаскиваем из кортежа строку с названием роли текущего пользователя
+        role_owner = 'владелец' # с этой переменной будем сравнивать роль текущего пользователя при отображении кнопок
 
-        return render_template('check_user_project.html', description_project=description_project, role_in_project=role_in_project)
+        return render_template('check_user_project.html', description_project=description_project,
+                               role_in_project=role_in_project, role_owner=role_owner)
 
 @app.route('/projects/<int:project_id>/tasks', methods=['GET'])
 @login_required
@@ -293,13 +295,20 @@ def change_password():
 
     if password_form.validate_on_submit():
         with get_db_connection() as con:
-            cur = con.cursor()
-
-            # получим ТЕКУЩИЙ ПАРОЛЬ пользователя
+            cur = con.cursor() # получим ТЕКУЩИЙ ПАРОЛЬ пользователя
             current_password = cur.execute('SELECT password FROM users WHERE user_id = %s', (user_id,)).fetchone()
+            current_password = current_password[0]
 
-            if current_password == password_form.password.data:
-                cur.execute('UPDATE users SET password = %s WHERE user_id = %s', (password_form.new_password.data,user_id))
+            # проверка на соответствие введённого пароля с текущим из базы
+            if check_password_hash(current_password, password_form.password.data):
+                new_password = generate_password_hash(password_form.password.data) # генерим хеш для нового пароля
+
+                # проверка на повтор старого пароля
+                if check_password_hash(current_password, password_form.password.data):
+                    flash(message='Старый и новый пароль не должны повторяться!', category='danger')
+                    return render_template('change_password.html', form=password_form)
+
+                cur.execute('UPDATE users SET password = %s WHERE user_id = %s', (new_password, user_id))
                 flash(message='Пароль обновлён', category='success')
                 return redirect(url_for('check_profile'))
             else:
@@ -344,7 +353,8 @@ def create_project(): # создать проект (ввести названи
 @app.route('/projects/<int:project_id>/create_task', methods=['GET', 'POST'])
 @login_required
 def create_task(project_id): # создать задачу (ввести название и назначить исполнителя include)
-
+    # только владелец может создать задачу для кого то кроме себя. При этом исполнитель должен
+    # быть участником проекта, иначе = ошибка добавления
     user_id = current_user.user_id
     creator_id = user_id
     with get_db_connection() as con:
@@ -354,7 +364,7 @@ def create_task(project_id): # создать задачу (ввести наз�
         role_user = cur.execute('SELECT role_name FROM part_in_project WHERE project_id = %s AND user_id = %s',
                                 (project_id, user_id,)).fetchone()
         role_user = role_user[0] # вытаскиваю из кортежа
-        # нужно сравнить её с ролью "владелец"
+        # нужно сравнить её с ролью "владелец" в html шаблоне, чтобы отрисовать или скрыть поле с логином исполнителя
         role_owner = 'владелец'
     executor_login = {'executor_login' : login_creator_default[0]} # по умолчанию исполнитель = создатель задачи
 
@@ -382,6 +392,13 @@ def create_task(project_id): # создать задачу (ввести наз�
                     return render_template('create_task.html', form=create_task_form, project_id=project_id)
 
             executor_id = executor_id[0]  # вытаскиваем айди из кортежа
+            # проверяем, что указанный исполнитель ДОБАВЛЕН В ЭТОТ ПРОЕКТ
+            check_executor = cur.execute(
+                        'SELECT user_id FROM part_in_project WHERE project_id = %s and user_id = %s',
+                        (project_id, executor_id)).fetchone()
+            if check_executor is None:
+                flash(message='Указанный пользователь не состоит в проекте', category='danger')
+                return render_template('create_task.html', form=create_task_form, project_id=project_id)
 
             status = cur.execute('SELECT status_id FROM status WHERE name = %s', ('Новая',)).fetchone()
             status_name = 'Новая'
@@ -400,6 +417,17 @@ def create_task(project_id): # создать задачу (ввести наз�
 @app.route('/projects/<int:project_id>/edit', methods=['GET', 'POST'])
 @login_required
 def edit_project(project_id): # редактировать проект (удалить переименовать назначить дедлайн
+
+    user_id = current_user.user_id
+    with get_db_connection() as con:
+        cur = con.cursor()
+        role_user = cur.execute('SELECT role_name FROM part_in_project WHERE project_id = %s AND user_id = %s',
+                                (project_id, user_id, )).fetchone()
+    if (role_user is None) or (role_user[0] != 'владелец'):
+        # редактировать проект могут только юзеры с правами владельца (это и создатель, в том числе)
+        flash(message='У Вас недостаточно прав для этого действия', category='danger')
+        return redirect(url_for('check_user_project', project_id=project_id))
+
     with get_db_connection() as con:
         cur = con.cursor()
         project_data = cur.execute('SELECT name, description FROM project WHERE project_id = %s',
@@ -428,10 +456,12 @@ def delete_project(project_id):
     user_id = current_user.user_id # получаю айдишник текущего юзера
     with get_db_connection() as con:
         cur = con.cursor()
-        role_user = cur.execute('SELECT role_name FROM part_in_project WHERE project_id = %s AND user_id = %s',
-                                (project_id, user_id, )).fetchone()
-    if (role_user is None) or (role_user and role_user[0] != 'владелец'): # удалить проект могут только юзеры с правами владельца
-        flash(message='У Вас недостаточно прав для этого действия', category='danger')
+
+        creator_project_id = cur.execute('SELECT creator_project_id FROM project WHERE project_id = %s', (project_id, )).fetchone()
+        creator_project_id = creator_project_id[0]
+
+    if creator_project_id != user_id: # удалить проект может только создатель проекта (он и владелец по умолчанию)
+        flash(message='У Вас недостаточно прав для этого действия. Удалить проект может только создатель.', category='danger')
         return redirect(url_for('check_user_project', project_id=project_id))
 
     delete_project_form = DeleteProjectForm()
@@ -453,7 +483,14 @@ def delete_project(project_id):
 @login_required
 def add_user_to_project(project_id):
 
-    # проверка на доступ (админ участник) ПО ТЗ ТАКОЕ НЕЛЬЗЯ СДЕЛАТЬ, НО ПОХОЖЕ ПРИДЁТСЯ
+    user_id = current_user.user_id
+    with get_db_connection() as con:
+        cur = con.cursor()
+        role_user = cur.execute('SELECT role_name FROM part_in_project WHERE project_id = %s AND user_id = %s',
+                                (project_id, user_id,)).fetchone()
+    if (role_user is None) or (role_user[0] != 'владелец'):  # добавить пользователей могут только юзеры с правами владельца
+        flash(message='У Вас недостаточно прав для этого действия', category='danger')
+        return redirect(url_for('check_user_project', project_id=project_id))
 
     add_user_form = AddUserToProjectForm()
 
@@ -461,9 +498,10 @@ def add_user_to_project(project_id):
         cur = con.cursor()
 
         roles = cur.execute('SELECT role_name FROM role ORDER BY role_name DESC').fetchall()
-        roles = [(row[0]) for row in roles] # вытаскиваем из списка кортежей роли в проекте (desc чтобы первым в списке была роль участник)
+        roles = [(row[0]) for row in roles] # вытаскиваем из списка кортежей роли в проекте (desc - обратный порядок,
+                                            # чтобы первым в списке была роль участник)
         add_user_form.role.choices = roles
-
+        # добавил значения в выпадающий список и отправляю форму в шаблон на рендер
     if add_user_form.validate_on_submit():
         with get_db_connection() as con:
             cur = con.cursor()
@@ -474,8 +512,16 @@ def add_user_to_project(project_id):
                 flash(message='Пользователя с таким логином не существует', category='danger')
                 return render_template('add_user_to_project.html', project_id=project_id, form=add_user_form)
 
+            user_id = user_id[0] # достаём из кортежа, чтобы правильно передать в insert
+            # проверяем, есть ли такой юзер в проекте (если УЖЕ есть то не добавляем)
+            check_user = cur.execute('SELECT user_id FROM part_in_project WHERE project_id = %s '
+                                     'AND user_id = %s',(project_id, user_id)).fetchone()
+            if check_user is not None:
+                flash(message=f'Пользователь {add_user_form.login.data} уже состоит в проекте', category='warning')
+                return redirect(url_for('check_user_project', project_id=project_id))
+
             cur.execute('INSERT INTO part_in_project (user_id, project_id) VALUES (%s, %s)', (user_id, project_id, ))
-            flash (message=f'Пользователь {{add_user_form.login.data}} добавлен в проект')
+            flash (message=f'Пользователь {add_user_form.login.data} добавлен в проект')
             return redirect(url_for('check_user_project', project_id=project_id))
 
     return render_template('add_user_to_project.html', project_id=project_id, form=add_user_form)
@@ -484,37 +530,80 @@ def add_user_to_project(project_id):
 @login_required
 def del_user_from_project(project_id):
 
-    # проверка на доступ (админ участник) ПО ТЗ ТАКОЕ НЕЛЬЗЯ СДЕЛАТЬ, НО ПОХОЖЕ ПРИДЁТСЯ
-    # создателя никто удалить не может, а удалять В ПРИНЦИПЕ может только владелец по роли
+    user_id = current_user.user_id # айди того, кто осуществляет удаление из проекта
+    with get_db_connection() as con:
+        cur = con.cursor()
+        role_user = cur.execute('SELECT role_name FROM part_in_project WHERE project_id = %s AND user_id = %s',
+                                (project_id, user_id,)).fetchone()
+    if (role_user is None) or (role_user[0] != 'владелец'):  # удалять пользователей могут только юзеры с правами владельца
+        # при этом создателя проекта удалить никто не сможет, проверка будет ниже
+        flash(message='У Вас недостаточно прав для этого действия', category='danger')
+        return redirect(url_for('check_user_project', project_id=project_id))
 
     ''' а если я удалю пользователя из проекта, где есть задачи на которые он назначен или те которые он создал то что будет
     1) если назначен = значит удалится исполнитель (задача останется без исполнителя null, но можно назначить)
-    2) ничего не произойдёт так как в системе он не удалён '''
+    2) ничего не произойдёт так как в системе он не удалён, А НАДО БЫ УДАЛИТЬ ВСЕ --ЕГО-- ЗАДАЧИ '''
 
     del_user_form = DeleteUserFromProjectForm()
-
-    with get_db_connection() as con:
-        cur = con.cursor()
-
-        # roles = cur.execute('SELECT name FROM roles').fetchall()
-
 
     if del_user_form.validate_on_submit():
         with get_db_connection() as con:
             cur = con.cursor()
 
             # достаём айдишник удаляемого пользователя, чтобы удалить его из бд
-            user_id = cur.execute('SELECT user_id FROM users WHERE login = %s', (del_user_form.login.data, )).fetchone()
-            if user_id is None:
+            user_id_del = cur.execute('SELECT user_id FROM users WHERE login = %s', (del_user_form.login.data, )).fetchone()
+            if user_id_del is None:
                 flash(message='Пользователя с таким логином не существует', category='danger')
                 return render_template('del_user_from_project.html', project_id=project_id, form=del_user_form)
 
-            cur.execute('DELETE FROM part_in_project WHERE user_id = %s', (user_id,))
-            flash (message=f'Пользователь {{del_user_form.login.data}} удалён из проекта')
+            user_id_del = user_id_del[0]
+
+            # проверяем, есть ли такой юзер в проекте (если нет, то удалять некого)
+            check_user = cur.execute('SELECT user_id FROM part_in_project WHERE project_id = %s '
+                                         'AND user_id = %s', (project_id, user_id_del, )).fetchone()
+            if check_user is None:
+                flash(message=f'Пользователь {del_user_form.login.data} не состоит в проекте', category='warning')
+                return redirect(url_for('check_user_project', project_id=project_id))
+
+            # проверяем, не создателя ли хотят удалить из проекта (это недопустимо)
+            check_user_creator_id = cur.execute('SELECT creator_project_id FROM project WHERE project_id = %s', (project_id, )).fetchone()
+            if check_user_creator_id == user_id_del:
+                flash(message='Создателя проекта удалить нельзя!', category='danger')
+                return redirect(url_for('check_user_project', project_id=project_id))
+
+            # проверяем, что пользователь не хочет удалить сам себя (владелец) - для этого есть кнопка выхода из проекта
+            if user_id == user_id_del:
+                flash(message='Вы не можете удалить себя из проекта. Воспользуйтесь кнопкой на странице просмотра проекта', category='warning')
+                return redirect(url_for('check_user_project', project_id=project_id))
+
+            # сначала удаляем все СВОИ задачи юзера (задачи для себя) в ДАННОМ проекте
+            cur.execute('DELETE FROM task WHERE creator_id = %s AND creator_id = executor_id '
+                        'AND project_id = %s', (user_id_del, project_id, ))
+            # затем удаляем его самого из проекта
+            cur.execute('DELETE FROM part_in_project WHERE user_id = %s', (user_id_del,))
+            flash (message=f'Пользователь {{del_user_form.login.data}} удалён из проекта.', category='success')
             return redirect(url_for('check_user_project', project_id=project_id))
 
     return render_template('del_user_from_project.html', project_id=project_id, form=del_user_form)
 
+
+@app.route('/project/<int:project_id>/out', methods=['GET', 'POST'])
+@login_required
+def out_of_project(project_id):
+    user_id = current_user.user_id
+
+    out_of_project_form = OutOfProjectForm()
+    if out_of_project_form.validate_on_submit():
+        with get_db_connection() as con:
+            cur = con.cursor()
+            # при выходе из проекта тоже удаляем все созданные пользователем задачи (в них он исполнитель)
+            cur.execute('DELETE FROM task WHERE creator_id = %s AND creator_id = executor_id '
+                        'AND project_id = %s', (user_id, project_id, ))
+            # затем удаляем его самого из проекта
+            cur.execute('DELETE FROM part_in_project WHERE user_id = %s', (user_id,))
+            flash(message=f'Пользователь {{del_user_form.login.data}} удалён из проекта.', category='success')
+            return redirect(url_for('check_user_project', project_id=project_id))
+    return render_template('out_of_project.html', project_id=project_id, form=out_of_project_form)
 
 @app.route('/project/<int:project_id>/members_of_project', methods=['GET'])
 @login_required
@@ -535,18 +624,37 @@ def members_of_project(project_id):
 @login_required
 def edit_task(task_id): # редактировать задачу (удалить, переименовать, переназначить исполнителя,
     # изменить приоритет, переназначить дедлайн, изменить статус, изменить описание задачи - что нужно сделать)
+
+    user_id = current_user.user_id
     with get_db_connection() as con:
-        cur = con.cursor()  # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
+        cur = con.cursor()
+        # получаю айди проекта, чтобы определить роль юзера в этом проекте
+        project_id = cur.execute('SELECT project_id FROM task WHERE task_id = %s', (task_id,)).fetchone()
+        project_id = project_id[0]
+
+        role_user = cur.execute('SELECT role_name FROM part_in_project WHERE project_id = %s AND user_id = %s',
+                                (project_id, user_id,)).fetchone()
+        creator_user_id = cur.execute('SELECT creator_id FROM task WHERE task_id = %s', (task_id,)).fetchone()
+        # редактировать задачу могут только владельцы и создатель задачи (но он может быть участником в проекте)
+        if (role_user is None) or (role_user[0] == 'участник' and creator_user_id != user_id):
+            flash(message='У Вас недостаточно прав для этого действия', category='danger')
+            return redirect(url_for('check_user_project', project_id=project_id))
+
+        role_user = role_user[0]  # вытаскиваю из кортежа
+        # нужно сравнить её с ролью "владелец" в html шаблоне, чтобы отрисовать или скрыть поле с логином исполнителя
+        # так как участник не должен иметь возможность путём эдита СВОЕЙ задачи менять исполнителя
+        role_owner = 'владелец'
+
+    with get_db_connection() as con:
+        cur = con.cursor()
 
         task_data = cur.execute('SELECT name, deadline, priority, status, description, executor_id FROM task '
                                    'WHERE task_id = %s', (task_id,)).fetchone()
         # получаю логин исполнителя, чтобы В ФОРМЕ отобразить, кто исполняет задачу (как при просмотре задачи)
         executor_login = cur.execute('SELECT u.login FROM users as u JOIN task as t ON t.executor_id = u.user_id WHERE task_id = %s', (task_id, )).fetchone()
 
-        get_status = cur.execute('SELECT name, name FROM status').fetchall() # получаем статусы, чтобы отобразить
+        all_status = cur.execute('SELECT name, name FROM status').fetchall() # получаем статусы, чтобы отобразить
                                                                    # их в выпадающем списке
-        all_status = [(row[0], row[1]) for row in get_status]
-
         all_priority = [
             (1, 1),
             (2, 2),
@@ -575,7 +683,7 @@ def edit_task(task_id): # редактировать задачу (удалит�
                 new_exec_id = new_exec_id[0] # вытаскиваем число из кортежа (тк изначально оно выдаётся в формате (2) )
 
 
-            if (new_exec_id is None) or (edit_task_form.deadline.data < datetime.date.today()):
+            if (new_exec_id is None) or (edit_task_form.deadline.data < datetime.datetime.now()):
                 if new_exec_id is None:
                     flash(message='Пользователя с таким логином не существует', category='danger')
                     return render_template('edit_task.html', form=edit_task_form)
@@ -594,12 +702,41 @@ def edit_task(task_id): # редактировать задачу (удалит�
             # при этом надо выводить ПОСЛЕДНЕЕ ИЗМЕНЕНИЕ ДЛЯ ПРОСМОТРА в задаче - сортирую по дате и вывожу первую
             # - то есть самое позднее изменение
 
+            #'SELECT name, deadline, priority, status, description, executor_id
+            result_change_type = ''
+            executor_login = executor_login[0] # вытаскиваем логин из кортежа
+
+            change_types = cur.execute('SELECT change_name FROM change_type').fetchall()
+            change_types = [row[0] for row in change_types]
+
+            if task_data[0] != edit_task_form.name.data:
+                result_change_type = change_types[6]
+            if task_data[1] != edit_task_form.deadline.data:
+                result_change_type = change_types[3]
+            if str(task_data[2]) != edit_task_form.priority.data: # из бд приоритет = int, а из формы = всё строки
+                result_change_type = change_types[5]
+            if task_data[3] != edit_task_form.status.data:
+                result_change_type = change_types[1]
+            if task_data[4] != edit_task_form.description.data:
+                result_change_type = change_types[2]
+            if executor_login != edit_task_form.executor_login.data:
+                result_change_type = change_types[4]
+
+            change_author_login = cur.execute('SELECT login FROM users WHERE user_id = %s', (user_id, )).fetchone()
+            change_author_login = change_author_login[0] # достаю логин из кортежа
+
+            change_type_id = cur.execute('SELECT type_id FROM change_type WHERE change_name = %s', (result_change_type,)).fetchone()
+            change_type_id = change_type_id[0]
+
+            cur.execute('INSERT INTO change (change_author, user_author_id, type, task_id, change_type_id) VALUES (%s, %s, %s, %s, %s)',
+                        (change_author_login, user_id, result_change_type, task_id, change_type_id, ))
 
             flash('Данные успешно обновлены', category='success')
             return redirect(url_for('check_task', task_id=task_id))
             # на этом функция прекращает свою работу
 
-    return render_template('edit_task.html', form=edit_task_form)
+    return render_template('edit_task.html', form=edit_task_form,
+                           role_user=role_user, role_owner=role_owner)
 
 @app.route('/tasks/<int:task_id>/delete', methods=['GET', 'POST'])
 @login_required
@@ -615,8 +752,8 @@ def delete_task(task_id):
         role_user = cur.execute('SELECT role_name FROM part_in_project WHERE project_id = %s AND user_id = %s',
                                 (project_id, user_id,)).fetchone()
         creator_user_id = cur.execute('SELECT creator_id FROM task WHERE task_id = %s', (task_id,)).fetchone()
-        # удалить проект могут только юзеры с правами владельца
-        if (role_user is None) or (role_user and role_user[0] == 'участник' and creator_user_id != user_id):
+        # удалить задачу могут только юзеры с правами владельца, а также создатель задачи (но участник проекта, например)
+        if (role_user is None) or (role_user[0] == 'участник' and creator_user_id != user_id):
             flash(message='У Вас недостаточно прав для этого действия', category='danger')
             return redirect(url_for('check_user_project', project_id=project_id))
 

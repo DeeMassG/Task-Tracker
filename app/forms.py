@@ -73,7 +73,9 @@ class DeleteUserFromProjectForm(FlaskForm):
     login = StringField('Введите логин пользователя, которого хотите удалить из проекта',
                         [validators.Length(max=30), validators.InputRequired(message='Данные не введены, повторите')])
     submit = SubmitField('Удалить пользователя')
-# class DeleteProjectForm(FlaskForm):
+
+class OutOfProjectForm(FlaskForm):
+    submit = SubmitField('Покинуть проект')
 
 class CreateTaskForm(FlaskForm):
     name = StringField('Введите название задачи', [validators.Length(max=50),

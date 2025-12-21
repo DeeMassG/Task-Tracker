@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from 'bootstrap5/form.html' import render_field %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-5">
+            <div class="card mt-5">
+                <div class="card-body">
+                    <h4 class="card-title text-center mb-4"> Вы действительно хотите покинуть проект? </h4>
+                    <div class="text-center mt-2">
+                        <h5> Все задачи, созданные Вами для себя, будут удалены. Другие задачи останутся. </h5>
+                    </div>
+                    <form method="POST" action="">
+                        {{ form.hidden_tag() }}
+
+                        <div class="d-grid gap-2 mt-3"> <button type="submit" class="btn btn-danger btn-lg"> Покинуть проект </button> </div>
+
+                        <div class="d-grid gap-2 mt-3">
+                            <a href = "{{ url_for('check_user_project', project_id = project_id) }}" class="btn btn-success btn-lg"> Остаться </a>
+                        </div>
+
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

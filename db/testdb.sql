@@ -5,6 +5,7 @@ INSERT INTO public.change_type VALUES (3, 'Изменение описания')
 INSERT INTO public.change_type VALUES (4, 'Изменение дедлайна');
 INSERT INTO public.change_type VALUES (5, 'Изменение исполнителя');
 INSERT INTO public.change_type VALUES (6, 'Изменение приоритета');
+INSERT INTO public.change_type VALUES (7, 'Изменение названия');
 
 INSERT INTO public.role VALUES (1, 'владелец');
 INSERT INTO public.role VALUES (2, 'участник');
