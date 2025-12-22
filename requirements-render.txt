@@ -1,6 +1,7 @@
 flask-login
 wtforms
 flask-wtf
+email_validator
 bootstrap-flask
 psycopg
 python-dotenv
