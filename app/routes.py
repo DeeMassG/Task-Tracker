@@ -40,12 +40,7 @@ def index():
 
 
 def get_db_connection(): # вынесем подключение к бд в отдельную функцию
-    return psycopg.connect(
-        host=app.config['DB_SERVER'],
-        user=app.config['DB_USER'],
-        password=app.config['DB_PASSWORD'],
-        dbname=app.config['DB_NAME']
-    )
+    return psycopg.connect(app.config['DB_URL'])
 
 @app.errorhandler(404)
 def page_not_found(error):
