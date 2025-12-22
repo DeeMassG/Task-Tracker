@@ -22,18 +22,12 @@
                     </dl>
                 </div>
             </div>
-        </div>
-    </div>
-</div>
-
-<div class="container mt-4">
-    <div class="row">
-        <div class="col-md-8">
-            <div class="d-grid gap-2">
-
+            <div class="text-left btn-lg mt-3">
+                <a href = "{{ url_for('check_task', task_id = task_id) }}" class="btn btn-success btn-lg"> Вернуться к задаче </a>
             </div>
         </div>
     </div>
+
 </div>
 
 {% endblock %}

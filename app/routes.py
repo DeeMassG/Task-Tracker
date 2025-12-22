@@ -177,8 +177,9 @@ def history_task(task_id): # просмотреть историю задачи 
                                     (task_id,)).fetchone()
         # теперь получаем инфо о последнем изменении этой задачи
         history = cur.execute('SELECT change_author, type, data_change FROM change WHERE task_id = %s ORDER BY change_id DESC LIMIT 1', (task_id, )).fetchone()
-        # return [history for history in history]
-        return render_template('task_history.html', task=task, history=history)
+        project_id = cur.execute('SELECT project_id FROM task WHERE task_id = %s', (task_id,)).fetchone()
+        project_id = project_id[0]
+        return render_template('task_history.html', task=task, history=history, task_id=task_id)
 
 
 @app.route('/tasks/<int:task_id>', methods = (['GET']))
@@ -187,12 +188,13 @@ def check_task(task_id): # Посмотреть информацию о конк
     with get_db_connection() as con:
         cur = con.cursor() # курсор для выполнения запросов к бд
 
-        task = cur.execute('SELECT t.name, t.deadline, t.priority, t.status, t.description, p.name, t.task_id FROM task as t '
+        task = cur.execute('SELECT t.name, t.deadline, t.priority, t.status, t.description, p.name, t.task_id, p.project_id FROM task as t '
                            'JOIN project as p ON t.project_id = p.project_id WHERE task_id = %s', (task_id,)).fetchone()
 
         login_owner = cur.execute('SELECT u.login FROM users as u JOIN task ON u.user_id = creator_id WHERE task_id = %s', (task_id,)).fetchone()
         login_exec = cur.execute('SELECT u.login FROM users as u JOIN task ON u.user_id = executor_id WHERE task_id = %s', (task_id,)).fetchone()
-        return render_template('check_task.html', task=task, owner=login_owner, executor=login_exec)
+        return render_template('check_task.html', task=task,
+                               owner=login_owner, executor=login_exec)
 
 
 @app.route('/projects/<int:project_id>', methods=['GET'])
@@ -454,7 +456,7 @@ def edit_project(project_id): # редактировать проект (уда�
             flash('Данные успешно обновлены', category='success')
             return redirect(url_for('check_user_project',project_id=project_id))
 
-    return render_template('edit_project.html', form=edit_project_form)
+    return render_template('edit_project.html', form=edit_project_form, project_id=project_id)
 
 @app.route('/projects/<int:project_id>/delete', methods=['GET', 'POST'])
 @login_required
@@ -742,7 +744,7 @@ def edit_task(task_id): # редактировать задачу (удалит�
             # на этом функция прекращает свою работу
 
     return render_template('edit_task.html', form=edit_task_form,
-                           role_user=role_user, role_owner=role_owner)
+                           role_user=role_user, role_owner=role_owner, task_id=task_id)
 
 @app.route('/tasks/<int:task_id>/delete', methods=['GET', 'POST'])
 @login_required

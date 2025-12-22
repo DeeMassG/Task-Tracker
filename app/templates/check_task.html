@@ -43,6 +43,7 @@
             <div class="d-grid gap-2">
                 <a href="{{ url_for('edit_task', task_id = task[6]) }}" class="btn btn-warning btn-lg"> Редактировать задачу </a>
                 <a href="{{ url_for('history_task', task_id = task[6]) }}" class="btn btn-primary btn-lg"> Последнее изменение задачи </a>
+                <a href="{{ url_for('check_user_project', project_id=task[7]) }}" class="btn btn-success btn-lg"> Вернуться к проекту </a>
                 <a href="{{ url_for('delete_task', task_id = task[6]) }}" class="btn btn-danger btn-lg"> Удалить задачу</a>
             </div>
         </div>
