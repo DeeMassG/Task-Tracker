@@ -45,7 +45,7 @@ class ChangePasswordForm(FlaskForm):
                                         validators.EqualTo('confirm', message='Пароли должны совпадать!')])
     confirm = PasswordField('Подтверждение пароля',
                             [validators.InputRequired(message='Повторите пароль для подтверждения'),
-                             validators.EqualTo('password', message='Пароли должны совпадать!')])
+                             validators.EqualTo('new_password', message='Пароли должны совпадать!')])
     submit = SubmitField('Изменить пароль')
 
 class CreateNewProjectForm(FlaskForm):

@@ -24,7 +24,7 @@
                 <h2> --- Ваши совместные проекты --- </h2>
              </div>
 
-             {% if user_projects %}
+             {% if shared_projects %}
                 {% for shared_project in shared_projects %}
                     <a href="{{ url_for('check_user_project', project_id = shared_project[1]) }}" class="btn btn-primary btn-lg me-2 mb-2"> {{ shared_project[0] }}  </a>
                 {% endfor %}
