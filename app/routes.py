@@ -59,7 +59,7 @@ def register(): # зарегистрироваться (создать логи�
                     # можно явно не указывать, что эта часть представления обрабатывает пользовательские данные
 
         with get_db_connection() as con:
-            cur = con.cursor() #Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
+            cur = con.cursor()
 
             check_login = cur.execute('SELECT login FROM users WHERE login = %s', (reg_form.login.data, )).fetchone() # проверим, есть ли юзер с таким же именем
             if (check_login is not None) and (check_login != reg_form.login.data):
@@ -86,7 +86,7 @@ def login(): # нужно залогинить юзера, подключить 
     login_form = LoginForm()
     if login_form.validate_on_submit():
         with get_db_connection() as con:
-            cur = con.cursor()  # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
+            cur = con.cursor()
             # проверяем, существует ли такой логин, пытаясь взять его из бд
             user_data = cur.execute('SELECT user_id, login, password, email_adress FROM users WHERE login = %s', (login_form.login.data,)).fetchone()
             if user_data is None or not check_password_hash(user_data[2], login_form.password.data):
@@ -196,8 +196,8 @@ def check_task(task_id): # Посмотреть информацию о конк
 @login_required
 def check_user_project(project_id): # посмотреть проект (вывести инфо о нём без задач)
     with get_db_connection() as con:
-        cur = con.cursor()  # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
-        description_project = cur.execute('SELECT login, p.name, date_of_creation, description, p.project_id FROM users as u JOIN '
+        cur = con.cursor()
+        description_project = cur.execute('SELECT deadline, login, p.name, date_of_creation, description, p.project_id FROM users as u JOIN '
                                     'project as p ON u.user_id = p.creator_project_id WHERE project_id = %s',
                                     (project_id,)).fetchone()
         # выведем роль пользователя в этом проекте (уровень доступа, его возможности в проекте)
@@ -215,7 +215,7 @@ def tasks_list_project(project_id): # посмотреть список всех
                           # по которым можно перейти к конкретным задачам
     with get_db_connection() as con:
 
-        cur = con.cursor() # Подключаем клиентский курсор. Он будет выполнять sql запросы и транзакции
+        cur = con.cursor()
         user_tasks = cur.execute('SELECT name, task_id FROM task WHERE project_id = %s', (project_id,)).fetchall()
 
         project_name = cur.execute('SELECT name FROM project WHERE project_id = %s', (project_id, )).fetchone()
@@ -322,17 +322,21 @@ def change_password():
 
 @app.route('/projects/newproject', methods=['GET', 'POST'])
 @login_required
-def create_project(): # создать проект (ввести название обязательно, дата создания, описание)
+def create_project(): # создать проект (ввести название обязательно, дедлайн, дата создания, описание)
 
     user_id = current_user.user_id
     new_project_form = CreateNewProjectForm()
-    if new_project_form.validate_on_submit():
+    if new_project_form.validate_on_submit(): # получили форму с данными
 
         with get_db_connection() as con:
             cur = con.cursor()
             # создаю запись о проекте в project
-            cur.execute('INSERT INTO project (creator_project_id, name, description) VALUES (%s, %s, %s)',
-                        (user_id, new_project_form.name.data, new_project_form.description.data))
+            if new_project_form.deadline.data < datetime.datetime.now():
+                flash(message='Дедлайн не может быть прошедшей датой', category='danger')
+                return render_template('create_new_project.html', form=new_project_form)
+
+            cur.execute('INSERT INTO project (creator_project_id, name, deadline, description) VALUES (%s, %s, %s, %s)',
+                        (user_id, new_project_form.name.data, new_project_form.deadline.data, new_project_form.description.data))
 
             # получаю сгенерированный базой айдишник только что созданного проекта
             project_id = cur.execute('SELECT project_id FROM project WHERE creator_project_id = %s '
@@ -434,20 +438,25 @@ def edit_project(project_id): # редактировать проект (уда�
 
     with get_db_connection() as con:
         cur = con.cursor()
-        project_data = cur.execute('SELECT name, description FROM project WHERE project_id = %s',
+        project_data = cur.execute('SELECT name, deadline, description FROM project WHERE project_id = %s',
                                    (project_id,)).fetchone()
 
     project_data_dictionary = {
         'name': project_data[0],
-        'description': project_data[1]
+        'deadline': project_data[1],
+        'description': project_data[2]
     }
-    edit_project_form = EditProjectForm(data=project_data_dictionary) # передаю текущее название и описание проекта
+    edit_project_form = EditProjectForm(data=project_data_dictionary) # передаю текущее название, дедлайн и описание проекта
 
     if edit_project_form.validate_on_submit():
         with get_db_connection() as con:
             cur = con.cursor()
-            cur.execute('UPDATE project SET name = %s, description = %s WHERE project_id = %s',
-                        (edit_project_form.name.data, edit_project_form.description.data, project_id))
+            if edit_project_form.deadline.data < datetime.datetime.now():
+                flash(message='Дедлайн не может быть прошедшей датой', category='danger')
+                return render_template('edit_project.html', form=edit_project_form, project_id=project_id)
+
+            cur.execute('UPDATE project SET name = %s, deadline = %s, description = %s WHERE project_id = %s',
+                        (edit_project_form.name.data, edit_project_form.deadline.data, edit_project_form.description.data, project_id))
             flash('Данные успешно обновлены', category='success')
             return redirect(url_for('check_user_project',project_id=project_id))
 
