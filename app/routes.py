@@ -755,6 +755,7 @@ def delete_task(task_id):
         role_user = cur.execute('SELECT role_name FROM part_in_project WHERE project_id = %s AND user_id = %s',
                                 (project_id, user_id,)).fetchone()
         creator_user_id = cur.execute('SELECT creator_id FROM task WHERE task_id = %s', (task_id,)).fetchone()
+        creator_user_id = creator_user_id[0] # опять попался
         # удалить задачу могут только юзеры с правами владельца, а также создатель задачи (но участник проекта, например)
         if (role_user is None) or (role_user[0] == 'участник' and creator_user_id != user_id):
             flash(message='У Вас недостаточно прав для этого действия', category='danger')
