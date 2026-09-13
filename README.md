@@ -24,3 +24,31 @@
 - Gunicorn, python-dotenv
 - Render (деплой приложения), Aiven (хостинг БД)
 
+
+
+## Установка и запуск
+
+### Клонируете репозиторий
+```
+git clone <URL_репозитория>
+cd <папка_проекта>
+```
+
+### Создание и активация виртуального окружения 
+```
+python -m venv venv
+venv\Scripts\activate или source venv/bin/activate на Linux
+pip install -r requirements.txt
+```
+### Создание базы и пользователя для неё (скрипт есть в db)
+
+### Создание .env в корне проекта
+```
+SECRET_KEY=пишем любую случайную строку, это нормально
+DB_URL=postgresql://tracker_user:your_password@localhost:5432/tracker_db
+```
+### Запускаем стандартной командой
+```
+python myproject.py
+Теперь на localhost http://127.0.0.1:5000 будет доступно приложение
+```
